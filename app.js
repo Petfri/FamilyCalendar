@@ -1,9 +1,10 @@
 // --- 1. STARTUP ---
-alert("App is waking up! Click OK to continue.");
+// No production alerts
 
 // --- 2. ERROR HANDLING ---
 window.onerror = function (msg, url, line) {
-    alert("Error: " + msg + "\nLine: " + line);
+    // Hidden logs for production
+    console.error("Error: " + msg + " at line " + line);
     return false;
 };
 
@@ -67,9 +68,10 @@ var app = {
 
     switchView: function (viewName) {
         this.state.view = viewName;
-        document.querySelectorAll('.nav-btn').forEach(function (b) {
-            b.classList.toggle('active', b.id === 'nav-' + viewName);
-        });
+        var btns = document.querySelectorAll('.nav-btn');
+        for (var i = 0; i < btns.length; i++) {
+            btns[i].classList.toggle('active', btns[i].id === 'nav-' + viewName);
+        }
         this.render();
         this.ui.toggleSidebar(false);
     },
@@ -279,7 +281,8 @@ var app = {
     auth: {
         showLogin: function () {
             document.getElementById('modal-overlay').classList.remove('hidden');
-            document.querySelectorAll('.modal').forEach(function (m) { m.classList.add('hidden'); });
+            var modals = document.querySelectorAll('.modal');
+            for (var i = 0; i < modals.length; i++) { modals[i].classList.add('hidden'); }
             document.getElementById('modal-login').classList.remove('hidden');
             var list = document.getElementById('login-user-list'); list.innerHTML = '';
             for (var i = 0; i < app.state.members.length; i++) {
@@ -294,11 +297,18 @@ var app = {
             document.getElementById('login-user-list').classList.add('hidden');
             document.getElementById('login-pin-container').classList.remove('hidden');
             document.getElementById('login-selected-user').textContent = m.name;
-            var input = document.getElementById('login-pin-input'); input.dataset.userid = m.id; input.value = ''; input.focus();
+            var input = document.getElementById('login-pin-input');
+            if (input) {
+                input.setAttribute('data-userid', m.id);
+                input.value = '';
+                input.focus();
+            }
         },
         submitPin: function () {
-            var input = document.getElementById('login-pin-input'); var m = null;
-            for (var i = 0; i < app.state.members.length; i++) { if (app.state.members[i].id === input.dataset.userid) m = app.state.members[i]; }
+            var input = document.getElementById('login-pin-input');
+            var userId = input.getAttribute('data-userid');
+            var m = null;
+            for (var i = 0; i < app.state.members.length; i++) { if (app.state.members[i].id === userId) m = app.state.members[i]; }
             if (m && m.pin === input.value) { app.state.currentUser = m; app.ui.closeModals(); app.render(); }
             else { alert("Wrong PIN"); input.value = ''; }
         },
@@ -406,7 +416,7 @@ var app = {
         },
         onQuickAddItem: function (sid) {
             var input = document.querySelector('.input-group input');
-            if (input.value.trim()) {
+            if (input && input.value.trim()) {
                 app.state.groceryItems.push({ id: 'i' + Date.now(), storeId: sid, text: input.value, checked: false });
                 input.value = ''; app.saveData(); app.render();
             }
