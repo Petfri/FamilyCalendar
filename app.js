@@ -1,7 +1,15 @@
 // Supabase Configuration
 const SUPABASE_URL = 'https://iaamejzakzludsultmxo.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_z4Or6Uoyd7OkBT9uYjALxw_0kRx-dYS';
-const supabase = window.supabase ? window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY) : null;
+let supabase = null;
+
+try {
+    if (window.supabase) {
+        supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+    }
+} catch (err) {
+    console.error('Supabase Init Error:', err);
+}
 
 const app = {
     syncId: 'family-shared-v1', // Unique ID for your family
@@ -21,50 +29,71 @@ const app = {
     },
 
     async init() {
-        await this.loadData();
+        console.log('App Initializing...');
+        // 1. Load Local Data first so we can show SOMETHING immediately
+        this.loadLocalData();
         this.render();
-        // Check Auth
-        if (!this.state.currentUser && this.state.members.length > 0) {
-            this.auth.showLogin();
-        }
+
+        // 2. Setup Events
         this.setupEventListeners();
+
+        // 3. Try Cloud Sync in the background
+        this.loadCloudData().then(() => {
+            console.log('Cloud sync check complete');
+            this.checkAuth();
+        });
+
         this.initRealtime();
     },
 
-    async loadData() {
-        // 1. Try to load from Supabase first
-        if (supabase) {
-            try {
-                const { data, error } = await supabase
-                    .from('sync_state')
-                    .select('content')
-                    .eq('id', this.syncId)
-                    .single();
+    checkAuth() {
+        if (!this.state.currentUser && this.state.members.length > 0) {
+            this.auth.showLogin();
+        }
+    },
 
-                if (data && data.content) {
-                    console.log('Loaded from Cloud Sync');
-                    this.applySyncedData(data.content);
-                    return;
-                }
-            } catch (err) {
-                console.warn('Sync failed, falling back to local');
+    loadLocalData() {
+        const stored = localStorage.getItem('familySyncData');
+        if (stored) {
+            try {
+                const parsed = JSON.parse(stored);
+                // Merge carefully
+                this.state.members = Array.isArray(parsed.members) ? parsed.members : this.state.members;
+                this.state.appointments = Array.isArray(parsed.appointments) ? parsed.appointments : this.state.appointments;
+                this.state.storeTypes = Array.isArray(parsed.storeTypes) ? parsed.storeTypes : this.state.storeTypes;
+                this.state.groceryItems = Array.isArray(parsed.groceryItems) ? parsed.groceryItems : this.state.groceryItems;
+                this.state.settings = parsed.settings || this.state.settings;
+                console.log('Local Data Loaded');
+            } catch (e) {
+                console.error('Local JSON Error:', e);
             }
         }
 
-        // 2. Fallback to Local Storage
-        const stored = localStorage.getItem('familySyncData');
-        if (stored) {
-            const parsed = JSON.parse(stored);
-            this.state = { ...this.state, ...parsed };
-        } else {
-            // Seed initial data
-            this.state.members = [
-                { id: 'm1', name: 'Admin', color: '#002c3a', pin: '0000' }
-            ];
-            this.state.storeTypes = [
-                { id: 's1', name: 'Groceries' }
-            ];
-            this.saveData();
+        // Seed if totally empty
+        if (this.state.members.length === 0) {
+            this.state.members = [{ id: 'm1', name: 'Admin', color: '#002c3a', pin: '0000' }];
+            this.state.storeTypes = [{ id: 's1', name: 'Groceries' }];
+        }
+    },
+
+    async loadCloudData() {
+        if (!supabase) return;
+
+        try {
+            const { data, error } = await supabase
+                .from('sync_state')
+                .select('content')
+                .eq('id', this.syncId)
+                .single();
+
+            if (data && data.content) {
+                console.log('Cloud Data Found, Syncing...');
+                this.applySyncedData(data.content);
+            } else if (error && error.code !== 'PGRST116') { // PGRST116 is "not found"
+                console.warn('Cloud Sync Error (might be missing table):', error);
+            }
+        } catch (err) {
+            console.error('Cloud Fetch Error:', err);
         }
     },
 
@@ -440,7 +469,7 @@ const app = {
                 el.className = 'sidebar-item';
                 el.innerHTML = `
                     <div class="member-avatar" style="background: ${m.color}; color: white;">
-                        ${m.name[0].toUpperCase()}
+                        ${(m.name || 'User')[0].toUpperCase()}
                     </div>
                     <span>${m.name}</span>
                     <small style="opacity:0.6; font-size:0.8em; margin-left:auto;">PIN: ${m.pin}</small>
