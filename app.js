@@ -185,6 +185,8 @@ var app = {
                 animation: 150,
                 ghostClass: 'sortable-ghost',
                 draggable: '.sidebar-item',
+                delay: 150,
+                delayOnTouchOnly: true,
                 onEnd: function () {
                     var newOrderIds = Array.prototype.slice.call(list.children).map(function (el) { return el.getAttribute('data-id'); });
                     if (app.state.view === 'calendar') {
@@ -289,7 +291,7 @@ var app = {
 
         var hours = [];
         if (hasEarly) hours.push({ val: -1, label: 'Early' });
-        for (var h = sH; h <= eH; h++) hours.push({ val: h, label: h + ':00' });
+        for (var h = sH; h <= eH; h++) hours.push({ val: h, label: h });
         if (hasLate) hours.push({ val: 24, label: 'Late' });
 
         for (var iH = 0; iH < hours.length; iH++) {
@@ -329,8 +331,8 @@ var app = {
                                 card.style.background = m ? m.color : '#002c3a';
                                 card.style.color = 'white';
 
-                                var t = appt.time;
-                                if (t && t.indexOf('0') === 0) t = t.substring(1);
+                                var t = appt.time ? appt.time.split(':')[0] : '';
+                                if (t.indexOf('0') === 0) t = t.substring(1);
                                 var html = '<div style="display:flex; flex-direction:column; flex:1; overflow:hidden;">' +
                                     '<small style="font-size:0.55rem; opacity:0.8; font-weight:700; line-height:1;">' + t + '</small>' +
                                     '<span style="font-size:0.7rem; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">' + appt.title + '</span>' +
@@ -497,7 +499,14 @@ var app = {
 
         if (window.Sortable) {
             if (list._sortable) list._sortable.destroy();
-            list._sortable = new Sortable(list, { animation: 150, onEnd: function () { app.handlers.reorderItems(); } });
+            list._sortable = new Sortable(list, {
+                animation: 150,
+                delay: 150,
+                delayOnTouchOnly: true,
+                filter: '.check-circle, .delete-btn-blue',
+                preventOnFilter: false,
+                onEnd: function () { app.handlers.reorderItems(); }
+            });
         }
     },
 
