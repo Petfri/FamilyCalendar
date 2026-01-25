@@ -38,12 +38,14 @@ var app = {
         maxHistory: 10,
         draggingAppt: null,
         draggingOccurrenceDate: null,
-        dropTarget: null
+        dropTarget: null,
+        expandedDayIndex: null
     },
 
     init: function () {
         this.loadLocalData();
         this.setupEventListeners();
+        this.setupSwipe();
         this.render();
 
         if (!this.state.currentUser) { this.auth.showLogin(); }
@@ -216,14 +218,17 @@ var app = {
         var controls = document.createElement('div');
         controls.className = 'calendar-controls';
         var weekNum = this.getWeekNumber(start);
-        var endOfWeek = new Date(start); endOfWeek.setDate(start.getDate() + 6);
-        var months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-        var dateInfo = start.getDate() + ' ' + months[start.getMonth()] + ' - ' + endOfWeek.getDate() + ' ' + months[endOfWeek.getMonth()];
+        var fullMonths = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+        var shortMonths = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+        var monthIdx = start.getMonth();
         controls.innerHTML = '<div style="display:flex; gap:12px; align-items:center; flex:1; overflow:hidden;">' +
             '<button class="week-nav-btn" onclick="app.handlers.gotoToday()" title="Today" style="border-radius:50%; min-width:36px;"><i class="fa-solid fa-calendar-day"></i></button>' +
             '<div style="display:flex; flex-direction:column; align-items:flex-start; min-width:80px;">' +
             '<small style="font-size:0.65rem; font-weight:800; opacity:0.6; text-transform:uppercase; letter-spacing:1px; color:var(--primary);">Week ' + weekNum + '</small>' +
-            '<h3 style="margin:0; line-height:1.2; font-size:1.1rem; letter-spacing:-0.5px; white-space:nowrap;">' + dateInfo + '</h3>' +
+            '<h3 style="margin:0; line-height:1.2; font-size:1.0rem; font-weight:700;">' +
+            '<span class="month-full">' + fullMonths[monthIdx] + '</span>' +
+            '<span class="month-short">' + shortMonths[monthIdx] + '</span>' +
+            '</h3>' +
             '</div>' +
             '<div style="display:flex; align-items:center; gap:8px; flex:1; justify-content:center;">' +
             '<button class="week-nav-btn" onclick="app.handlers.changeWeek(-4)"><i class="fa-solid fa-angles-left"></i></button>' +
@@ -260,15 +265,32 @@ var app = {
 
         var grid = document.createElement('div');
         grid.className = 'calendar-grid';
+        grid.id = 'calendar-grid-swipe';
+
+        // Dynamic column widths
+        var colDef = "28px ";
+        for (var i = 0; i < 7; i++) {
+            if (this.state.expandedDayIndex === i) colDef += "3fr ";
+            else colDef += "minmax(0, 1fr) ";
+        }
+        grid.style.gridTemplateColumns = colDef;
+
         var hTime = document.createElement('div'); hTime.className = 'grid-header'; hTime.textContent = 'TIME'; grid.appendChild(hTime);
         var days = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'];
         var today = new Date();
         for (var i = 0; i < 7; i++) {
-            var hDay = document.createElement('div');
-            var currentDay = new Date(start); currentDay.setDate(start.getDate() + i);
-            hDay.className = 'grid-header' + (i >= 5 ? ' weekend' : '') + (currentDay.toDateString() === today.toDateString() ? ' today' : '');
-            hDay.textContent = days[i] + ' ' + currentDay.getDate();
-            grid.appendChild(hDay);
+            (function (idx) {
+                var hDay = document.createElement('div');
+                var currentDay = new Date(start); currentDay.setDate(start.getDate() + idx);
+                hDay.className = 'grid-header' + (idx >= 5 ? ' weekend' : '') + (currentDay.toDateString() === today.toDateString() ? ' today' : '');
+                if (app.state.expandedDayIndex === idx) hDay.classList.add('expanded');
+                hDay.textContent = days[idx] + ' ' + currentDay.getDate();
+                hDay.onclick = function () {
+                    app.state.expandedDayIndex = (app.state.expandedDayIndex === idx) ? null : idx;
+                    app.render();
+                };
+                grid.appendChild(hDay);
+            })(i);
         }
 
         var sH = this.state.settings.startHour || 8;
@@ -470,6 +492,14 @@ var app = {
 
             if (item.isHeader) {
                 el.innerHTML = '<span class="drag-handle" style="flex:1; margin-left:0; font-weight:800; padding: 5px 0;">' + item.text + '</span>';
+
+                var hDel = document.createElement('button');
+                hDel.className = 'delete-btn-blue';
+                hDel.style.marginRight = '8px';
+                hDel.innerHTML = '<i class="fa-solid fa-xmark"></i>';
+                hDel.onclick = function (e) { e.stopPropagation(); app.handlers.deleteAll(sid, item.id); };
+                el.appendChild(hDel);
+
                 var hOpt = document.createElement('button');
                 hOpt.className = 'delete-btn-blue';
                 hOpt.innerHTML = '<i class="fa-solid fa-ellipsis-vertical"></i>';
@@ -842,20 +872,37 @@ var app = {
             app.state.groceryItems = newList; app.saveData(); app.render();
         },
         deleteAll: function (sid, headId) {
-            if (!confirm('Delete all items' + (headId ? ' under this heading' : '') + '?')) return;
-            var newList = [];
-            var inSection = false;
-            for (var i = 0; i < app.state.groceryItems.length; i++) {
-                var item = app.state.groceryItems[i];
-                if (headId) {
-                    if (item.id === headId) { inSection = true; newList.push(item); continue; }
-                    if (inSection && item.isHeader) inSection = false;
-                    if (!inSection || item.storeId !== sid) newList.push(item);
-                } else {
-                    if (item.storeId !== sid) newList.push(item);
+            var choices = [
+                {
+                    label: 'Delete Header & Items',
+                    danger: true,
+                    action: function () {
+                        var newList = [];
+                        var inSection = false;
+                        for (var i = 0; i < app.state.groceryItems.length; i++) {
+                            var item = app.state.groceryItems[i];
+                            if (item.id === headId) { inSection = true; continue; } // Skip header
+                            if (inSection && item.isHeader) inSection = false; // Next section starts
+                            if (!inSection || item.storeId !== sid) newList.push(item);
+                        }
+                        app.state.groceryItems = newList; app.saveData(); app.renderShoppingListItems();
+                        app.ui.closeModals();
+                    }
+                },
+                {
+                    label: 'Delete Only Heading',
+                    danger: true,
+                    action: function () {
+                        var newList = [];
+                        for (var i = 0; i < app.state.groceryItems.length; i++) {
+                            if (app.state.groceryItems[i].id !== headId) newList.push(app.state.groceryItems[i]);
+                        }
+                        app.state.groceryItems = newList; app.saveData(); app.renderShoppingListItems();
+                        app.ui.closeModals();
+                    }
                 }
-            }
-            app.state.groceryItems = newList; app.saveData(); app.renderShoppingListItems();
+            ];
+            app.ui.showChoiceModal('Delete Heading', 'Would you like to delete the items as well?', choices);
         },
         clearCompleted: function (sid, headId) {
             var newList = [];
@@ -1096,6 +1143,31 @@ var app = {
             });
             this.openModal('choice');
         }
+    },
+
+    setupSwipe: function () {
+        var self = this;
+        var startX = 0;
+        var startY = 0;
+
+        // Use document listeners to catch swipes even if target is small, 
+        // but restrict to calendar view
+        document.addEventListener('touchstart', function (e) {
+            if (app.state.view !== 'calendar') return;
+            startX = e.touches[0].clientX;
+            startY = e.touches[0].clientY;
+        }, { passive: true });
+
+        document.addEventListener('touchend', function (e) {
+            if (app.state.view !== 'calendar') return;
+            var diffX = e.changedTouches[0].clientX - startX;
+            var diffY = e.changedTouches[0].clientY - startY;
+
+            // horizontal swipe > 80px and horizontal more than vertical
+            if (Math.abs(diffX) > 80 && Math.abs(diffX) > Math.abs(diffY)) {
+                app.handlers.changeWeek(diffX > 0 ? -1 : 1);
+            }
+        }, { passive: true });
     },
 
     setupEventListeners: function () {
