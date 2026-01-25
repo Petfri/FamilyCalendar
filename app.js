@@ -31,6 +31,8 @@ var app = {
         groceryItems: [],
         currentWeekOffset: 0,
         selectedStoreId: null,
+        selectedMemberId: null,
+        selectedHeaderId: null,
         settings: { startHour: 8, endHour: 20 }
     },
 
@@ -40,6 +42,7 @@ var app = {
         this.render();
 
         if (!this.state.currentUser) { this.auth.showLogin(); }
+        else { this.state.selectedMemberId = this.state.currentUser.id; }
 
         if (supabaseClient) {
             this.loadCloudData();
@@ -97,47 +100,86 @@ var app = {
             for (var i = 0; i < this.state.members.length; i++) {
                 (function (m) {
                     var el = document.createElement('div');
-                    el.className = 'sidebar-item';
+                    el.className = 'sidebar-item' + (app.state.selectedMemberId === m.id ? ' active' : '');
+                    el.setAttribute('data-id', m.id);
                     el.style.display = 'flex'; el.style.justifyContent = 'space-between'; el.style.alignItems = 'center';
 
                     var left = document.createElement('div');
-                    left.style.display = 'flex'; left.style.alignItems = 'center'; left.style.gap = '8px';
+                    left.style.display = 'flex'; left.style.alignItems = 'center'; left.style.gap = '8px'; left.style.flex = '1';
                     left.innerHTML = '<div class="member-avatar" style="background:' + m.color + '">' + (m.name || 'U')[0] + '</div><span>' + m.name + '</span>';
-                    left.onclick = function () { app.handlers.onEditMember(m); };
+                    left.onclick = function () {
+                        app.state.selectedMemberId = m.id;
+                        app.render();
+                    };
 
-                    var del = document.createElement('button');
-                    del.className = 'icon-btn-small'; del.innerHTML = '<i class="fa-solid fa-xmark"></i>';
-                    del.style.opacity = '0.3';
-                    del.onclick = function (e) { e.stopPropagation(); app.handlers.deleteMemberConfirm(m.id); };
+                    var settingsBtn = document.createElement('button');
+                    settingsBtn.className = 'delete-btn-ghost';
+                    settingsBtn.innerHTML = '<i class="fa-solid fa-gear"></i>';
+                    settingsBtn.style.opacity = '0.4';
+                    settingsBtn.onclick = function (e) {
+                        e.stopPropagation();
+                        app.handlers.onEditMember(m);
+                    };
 
                     el.appendChild(left);
-                    el.appendChild(del);
+                    el.appendChild(settingsBtn);
                     list.appendChild(el);
                 })(this.state.members[i]);
             }
         } else {
-            title.textContent = "Stores";
+            title.textContent = "Lists";
             for (var i = 0; i < this.state.storeTypes.length; i++) {
-                (function (s) {
+                (function (s, idx) {
                     var el = document.createElement('div');
                     el.className = 'sidebar-item' + (app.state.selectedStoreId === s.id ? ' active' : '');
+                    el.setAttribute('data-id', s.id);
                     el.style.display = 'flex'; el.style.justifyContent = 'space-between'; el.style.alignItems = 'center';
 
                     var left = document.createElement('div');
-                    left.style.display = 'flex'; left.style.alignItems = 'center'; left.style.gap = '8px';
-                    left.innerHTML = '<i class="fa-solid fa-store"></i><span>' + s.name + '</span>';
+                    left.style.display = 'flex'; left.style.alignItems = 'center'; left.style.gap = '8px'; left.style.flex = '1';
+                    left.innerHTML = '<i class="fa-solid fa-list"></i><span>' + s.name + '</span>';
                     left.onclick = function () { app.state.selectedStoreId = s.id; app.render(); };
 
+                    var right = document.createElement('div');
+                    right.style.display = 'flex'; right.style.alignItems = 'center';
+
                     var del = document.createElement('button');
-                    del.className = 'icon-btn-small'; del.innerHTML = '<i class="fa-solid fa-xmark"></i>';
-                    del.style.opacity = '0.3';
+                    del.className = 'delete-btn-ghost'; del.innerHTML = '<i class="fa-solid fa-xmark"></i>';
                     del.onclick = function (e) { e.stopPropagation(); app.handlers.deleteStore(s.id); };
 
+                    right.appendChild(del);
                     el.appendChild(left);
-                    el.appendChild(del);
+                    el.appendChild(right);
                     list.appendChild(el);
-                })(this.state.storeTypes[i]);
+                })(this.state.storeTypes[i], i);
             }
+        }
+
+        // Initialize Sortable for Sidebar
+        if (window.Sortable) {
+            if (list._sortable) list._sortable.destroy();
+            list._sortable = new Sortable(list, {
+                animation: 150,
+                ghostClass: 'sortable-ghost',
+                draggable: '.sidebar-item',
+                onEnd: function () {
+                    var newOrderIds = Array.prototype.slice.call(list.children).map(function (el) { return el.getAttribute('data-id'); });
+                    if (app.state.view === 'calendar') {
+                        // Reorder members
+                        var newMembers = newOrderIds.map(function (id) {
+                            return app.state.members.find(function (m) { return m.id === id; });
+                        }).filter(Boolean);
+                        app.state.members = newMembers;
+                    } else {
+                        // Reorder stores
+                        var newStores = newOrderIds.map(function (id) {
+                            return app.state.storeTypes.find(function (s) { return s.id === id; });
+                        }).filter(Boolean);
+                        app.state.storeTypes = newStores;
+                    }
+                    app.saveData();
+                }
+            });
         }
     },
 
@@ -145,19 +187,51 @@ var app = {
         var start = this.getStartOfWeek(this.state.currentWeekOffset);
         var controls = document.createElement('div');
         controls.className = 'calendar-controls';
-        var dateInfo = start.getDate() + '. ' + (["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][start.getMonth()]);
-        controls.innerHTML = '<div style="display:flex; gap:10px; align-items:center;">' +
-            '<button class="icon-btn" onclick="app.handlers.changeWeek(-1)"><i class="fa-solid fa-chevron-left"></i></button>' +
-            '<button class="icon-btn" onclick="app.handlers.changeWeek(1)"><i class="fa-solid fa-chevron-right"></i></button>' +
-            '<h3>' + dateInfo + '</h3>' +
+        var weekNum = this.getWeekNumber(start);
+        var dateInfo = start.getDate() + ' ' + (["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][start.getMonth()]);
+        controls.innerHTML = '<div style="display:flex; gap:12px; align-items:center; flex:1; overflow:hidden;">' +
+            '<button class="week-nav-btn" onclick="app.handlers.gotoToday()" title="Today" style="border-radius:50%; min-width:36px;"><i class="fa-solid fa-calendar-day"></i></button>' +
+            '<div style="display:flex; flex-direction:column; align-items:flex-start; min-width:70px;">' +
+            '<small style="font-size:0.65rem; font-weight:800; opacity:0.6; text-transform:uppercase; letter-spacing:1px; color:var(--primary);">Week ' + weekNum + '</small>' +
+            '<h3 style="margin:0; line-height:1.2; font-size:1.1rem; letter-spacing:-0.5px;">' + dateInfo + '</h3>' +
             '</div>' +
-            '<button class="btn-primary" onclick="app.handlers.onAddSidebarItem()">+ Add</button>';
+            '<div style="display:flex; align-items:center; gap:8px; flex:1; justify-content:center;">' +
+            '<button class="week-nav-btn" onclick="app.handlers.changeWeek(-4)"><i class="fa-solid fa-angles-left"></i></button>' +
+            '<div id="header-week-selector" class="week-selector-container" style="flex:1; max-width:400px; padding: 0 10px;"></div>' +
+            '<button class="week-nav-btn" onclick="app.handlers.changeWeek(4)"><i class="fa-solid fa-angles-right"></i></button>' +
+            '</div>' +
+            '</div>';
         container.appendChild(controls);
+
+        var weekCont = controls.querySelector('#header-week-selector');
+        // Show 4 weeks around current offset
+        var startOff = Math.floor(app.state.currentWeekOffset / 4) * 4;
+        for (var w = startOff; w < startOff + 4; w++) {
+            (function (off) {
+                var d = app.getStartOfWeek(off);
+                var endD = new Date(d); endD.setDate(d.getDate() + 6);
+                var num = app.getWeekNumber(d);
+                var monthLabel = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][d.getMonth()];
+                var dateRange = d.getDate() + '-' + endD.getDate();
+
+                var pill = document.createElement('div');
+                var isCurrent = (off === 0);
+                pill.className = 'week-pill' + (app.state.currentWeekOffset === off ? ' active' : '') + (isCurrent ? ' current-real-week' : '');
+
+                pill.innerHTML =
+                    '<div style="font-size:0.55rem; opacity:0.8; line-height:1; margin-bottom:1px;">' + monthLabel + '</div>' +
+                    '<div style="font-size:0.8rem; font-weight:900; line-height:1;">W' + num + '</div>' +
+                    '<div style="font-size:0.55rem; opacity:0.8; line-height:1; margin-top:1px;">' + dateRange + '</div>';
+
+                pill.onclick = function () { app.state.currentWeekOffset = off; app.render(); };
+                weekCont.appendChild(pill);
+            })(w);
+        }
 
         var grid = document.createElement('div');
         grid.className = 'calendar-grid';
-        var hTime = document.createElement('div'); hTime.className = 'grid-header'; hTime.textContent = 'Time'; grid.appendChild(hTime);
-        var days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+        var hTime = document.createElement('div'); hTime.className = 'grid-header'; hTime.textContent = 'TIME'; grid.appendChild(hTime);
+        var days = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'];
         for (var i = 0; i < 7; i++) {
             var hDay = document.createElement('div'); hDay.className = 'grid-header'; hDay.textContent = days[i]; grid.appendChild(hDay);
         }
@@ -165,19 +239,61 @@ var app = {
         var sH = this.state.settings.startHour || 8;
         var eH = this.state.settings.endHour || 20;
 
-        for (var h = sH; h <= eH; h++) {
-            var label = document.createElement('div'); label.className = 'grid-time-label'; label.textContent = h + ':00'; grid.appendChild(label);
-            for (var d = 0; d < 7; d++) {
-                (function (hour, dayIndex) {
-                    var cell = document.createElement('div');
-                    cell.className = 'grid-cell';
-                    var cellDate = new Date(start); cellDate.setDate(start.getDate() + dayIndex);
-                    cell.onclick = function () { app.handlers.onCellClick(cellDate, hour); };
+        // Check for early/late appointments in current week
+        var hasEarly = false;
+        var hasLate = false;
+        for (var k = 0; k < app.state.appointments.length; k++) {
+            var apt = app.state.appointments[k];
+            var ad = new Date(apt.date);
+            var isInWeek = false;
+            for (var dI = 0; dI < 7; dI++) {
+                var wd = new Date(start); wd.setDate(start.getDate() + dI);
+                if (ad.toDateString() === wd.toDateString()) { isInWeek = true; break; }
+            }
+            if (isInWeek) {
+                var h = parseInt(apt.time);
+                if (h < sH) hasEarly = true;
+                if (h > eH) hasLate = true;
+            }
+        }
 
+        var hours = [];
+        if (hasEarly) hours.push({ val: -1, label: 'Early' });
+        for (var h = sH; h <= eH; h++) hours.push({ val: h, label: h + ':00' });
+        if (hasLate) hours.push({ val: 24, label: 'Late' });
+
+        for (var iH = 0; iH < hours.length; iH++) {
+            var hourObj = hours[iH];
+            var label = document.createElement('div');
+            label.className = 'grid-time-label' + (hourObj.val % 2 === 0 ? ' row-even' : '');
+            if (hourObj.val === -1 || hourObj.val === 24) label.style.fontSize = '0.65rem';
+            label.textContent = hourObj.label;
+            grid.appendChild(label);
+
+            for (var d = 0; d < 7; d++) {
+                (function (hObj, dayIndex) {
+                    var cell = document.createElement('div');
+                    cell.className = 'grid-cell' + (hObj.val % 2 === 0 ? ' row-even' : '');
+                    var cellDate = new Date(start); cellDate.setDate(start.getDate() + dayIndex);
+
+                    if (hObj.val >= 0 && hObj.val <= 23) {
+                        cell.onclick = function () { app.handlers.onCellClick(cellDate, hObj.val); };
+                    }
+
+                    var hasAppt = false;
                     for (var j = 0; j < app.state.appointments.length; j++) {
                         (function (appt) {
                             var ad = new Date(appt.date);
-                            if (ad.toDateString() === cellDate.toDateString() && parseInt(appt.time) === hour) {
+                            var ah = parseInt(appt.time);
+                            var match = false;
+                            if (ad.toDateString() === cellDate.toDateString()) {
+                                if (hObj.val === -1 && ah < sH) match = true;
+                                else if (hObj.val === 24 && ah > eH) match = true;
+                                else if (ah === hObj.val) match = true;
+                            }
+
+                            if (match) {
+                                hasAppt = true;
                                 var m = null;
                                 for (var k = 0; k < app.state.members.length; k++) { if (app.state.members[k].id === appt.memberId) m = app.state.members[k]; }
                                 var card = document.createElement('div');
@@ -185,19 +301,30 @@ var app = {
                                 card.style.background = m ? m.color : '#002c3a';
                                 card.style.color = 'white';
 
-                                var html = '<strong>' + appt.title + '</strong>';
+                                var t = appt.time;
+                                if (t && t.indexOf('0') === 0) t = t.substring(1);
+                                var html = '<div style="display:flex; flex-direction:column; flex:1; overflow:hidden;">' +
+                                    '<small style="font-size:0.55rem; opacity:0.8; font-weight:700; line-height:1;">' + t + '</small>' +
+                                    '<span style="font-size:0.7rem; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">' + appt.title + '</span>' +
+                                    '</div>';
                                 if (appt.comment && appt.comment.trim()) {
-                                    html += ' <i class="fa-regular fa-comment" style="font-size:0.75rem; opacity:0.8; margin-left:4px;"></i>';
+                                    html += '<span style="font-weight:900; font-size:0.7rem; margin-left:4px;">N</span>';
                                 }
                                 card.innerHTML = html;
-
                                 card.onclick = function (e) { e.stopPropagation(); app.handlers.onEditAppointment(appt); };
                                 cell.appendChild(card);
                             }
                         })(app.state.appointments[j]);
                     }
+                    if (hasAppt && hObj.val !== -1 && hObj.val !== 24) {
+                        var quickAdd = document.createElement('div');
+                        quickAdd.style.textAlign = 'center'; quickAdd.style.opacity = '0.15';
+                        quickAdd.style.fontSize = '0.75rem'; quickAdd.style.marginTop = 'auto';
+                        quickAdd.innerHTML = '<i class="fa-solid fa-plus"></i>';
+                        cell.appendChild(quickAdd);
+                    }
                     grid.appendChild(cell);
-                })(h, d);
+                })(hourObj, d);
             }
         }
         container.appendChild(grid);
@@ -207,33 +334,139 @@ var app = {
         if (!this.state.selectedStoreId && this.state.storeTypes.length > 0) { this.state.selectedStoreId = this.state.storeTypes[0].id; }
         var store = null;
         for (var i = 0; i < this.state.storeTypes.length; i++) { if (this.state.storeTypes[i].id === this.state.selectedStoreId) store = this.state.storeTypes[i]; }
-        if (!store) { container.innerHTML = '<div style="padding:40px; text-align:center;">Select or Create a store in the sidebar.</div>'; return; }
+        if (!store) { container.innerHTML = '<div style="padding:40px; text-align:center;">Select or Create a list in the sidebar.</div>'; return; }
 
+        container.innerHTML = '';
         var head = document.createElement('div'); head.className = 'shopping-header';
-        head.innerHTML = '<div style="display:flex; justify-content:space-between; align-items:center;">' +
-            '<h2>' + store.name + '</h2>' +
-            '<button class="btn-text" style="color:red;" onclick="app.handlers.clearCompleted(\'' + store.id + '\')"><i class="fa-solid fa-broom"></i> Clear Completed</button>' +
-            '</div>';
+        head.style.display = 'flex'; head.style.justifyContent = 'space-between'; head.style.alignItems = 'center';
+        head.innerHTML = '<h2>' + store.name + '</h2>';
+
+        var optBtn = document.createElement('button');
+        optBtn.className = 'btn-icon-round';
+        optBtn.innerHTML = '<i class="fa-solid fa-ellipsis-vertical"></i>';
+        optBtn.onclick = function (e) { app.handlers.showShoppingMenu(e, store.id, null); };
+        head.appendChild(optBtn);
+
         container.appendChild(head);
 
-        var inputWrap = document.createElement('div'); inputWrap.className = 'input-group';
-        var input = document.createElement('input'); input.type = 'text'; input.placeholder = 'Add something...';
-        input.onkeydown = function (e) { if (e.key === 'Enter') app.handlers.onQuickAddItem(store.id); };
-        inputWrap.appendChild(input); container.appendChild(inputWrap);
+        var inputWrap = document.createElement('div');
+        inputWrap.className = 'input-group';
+        inputWrap.style.display = 'flex';
+        inputWrap.style.gap = '8px';
+        inputWrap.style.alignItems = 'center';
 
-        var list = document.createElement('div'); list.className = 'shopping-list'; container.appendChild(list);
-        for (var j = 0; j < this.state.groceryItems.length; j++) {
-            (function (item) {
-                if (item.storeId === store.id) {
-                    var el = document.createElement('div'); el.className = 'shopping-item' + (item.checked ? ' checked' : '');
-                    el.innerHTML = '<div class="check-circle' + (item.checked ? ' checked' : '') + '"></div>' +
-                        '<span style="flex:1; margin-left:15px; ' + (item.checked ? 'text-decoration:line-through; opacity:0.5;' : '') + '">' + item.text + '</span>';
-                    el.onclick = function () { app.handlers.toggleItem(item.id); };
-                    var del = document.createElement('button'); del.className = 'icon-btn'; del.innerHTML = '<i class="fa-regular fa-trash-can"></i>';
-                    del.onclick = function (e) { e.stopPropagation(); app.handlers.deleteItem(item.id); };
-                    el.appendChild(del); list.appendChild(el);
+        // Input field
+        var input = document.createElement('input');
+        input.id = 'shopping-input';
+        input.type = 'text';
+        input.placeholder = 'Add something...';
+        input.style.flex = '1';
+        input.onkeydown = function (e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                app.handlers.onQuickAddItem(store.id);
+            }
+        };
+        inputWrap.appendChild(input);
+
+        // Heading button (at the end)
+        var headingBtn = document.createElement('button');
+        headingBtn.className = 'icon-btn-primary';
+        headingBtn.style.minHeight = '48px';
+        headingBtn.style.minWidth = '48px';
+        headingBtn.style.borderRadius = '14px';
+        headingBtn.style.boxShadow = '0 4px 12px rgba(0,44,58,0.3)';
+        headingBtn.title = 'Add Heading';
+        headingBtn.innerHTML = '<strong style="font-size: 1.1rem;">H</strong>';
+        headingBtn.onclick = function () { app.handlers.addHeading(); };
+        inputWrap.appendChild(headingBtn);
+
+        container.appendChild(inputWrap);
+
+        var list = document.createElement('div');
+        list.id = 'shopping-list-items';
+        list.className = 'shopping-list';
+        container.appendChild(list);
+
+        // Render items after input
+        this.renderShoppingListItems();
+    },
+
+    renderShoppingListItems: function () {
+        var list = document.getElementById('shopping-list-items');
+        if (!list) return;
+        list.innerHTML = '';
+        var sid = this.state.selectedStoreId;
+
+        // Get and group items
+        var storeItems = this.state.groceryItems.filter(function (i) { return i.storeId === sid; });
+        var grouped = [];
+        var currentGroup = { header: null, items: [] };
+
+        for (var k = 0; k < storeItems.length; k++) {
+            var item = storeItems[k];
+            if (item.isHeader) {
+                if (currentGroup.header || currentGroup.items.length > 0) grouped.push(currentGroup);
+                currentGroup = { header: item, items: [] };
+            } else {
+                currentGroup.items.push(item);
+            }
+        }
+        grouped.push(currentGroup);
+
+        for (var i = 0; i < grouped.length; i++) {
+            var g = grouped[i];
+            if (g.header) renderRow(g.header);
+
+            // Sort items: unchecked first
+            var sorted = g.items.slice().sort(function (a, b) {
+                return (a.checked === b.checked) ? 0 : (a.checked ? 1 : -1);
+            });
+
+            for (var j = 0; j < sorted.length; j++) renderRow(sorted[j]);
+        }
+
+        function renderRow(item) {
+            var el = document.createElement('div');
+            el.className = 'shopping-item' + (item.checked ? ' checked' : '') + (item.isHeader ? ' is-header' : '') + ' interactive-item';
+            if (item.isHeader && app.state.selectedHeaderId === item.id) el.classList.add('header-selected');
+            el.setAttribute('data-id', item.id);
+
+            if (item.isHeader) {
+                el.innerHTML = '<span style="flex:1; margin-left:0; font-weight:800;">' + item.text + '</span>';
+                var hOpt = document.createElement('button');
+                hOpt.className = 'delete-btn-blue';
+                hOpt.innerHTML = '<i class="fa-solid fa-ellipsis-vertical"></i>';
+                hOpt.onclick = function (e) { e.stopPropagation(); app.handlers.showShoppingMenu(e, sid, item.id); };
+                el.appendChild(hOpt);
+            } else {
+                var check = '<div class="check-circle' + (item.checked ? ' checked' : '') + '"></div>';
+                el.innerHTML = check + '<span style="flex:1; margin-left:15px; ' + (item.checked ? 'text-decoration:line-through; opacity:0.5;' : '') + '">' + item.text + '</span>';
+            }
+
+            el.onclick = function (e) {
+                if (e.target.closest('button')) return;
+                if (item.isHeader) {
+                    app.state.selectedHeaderId = (app.state.selectedHeaderId === item.id) ? null : item.id;
+                    app.renderShoppingListItems();
+                } else {
+                    app.handlers.toggleItem(item.id);
                 }
-            })(this.state.groceryItems[j]);
+            };
+
+            if (!item.isHeader) {
+                var del = document.createElement('button');
+                del.className = 'delete-btn-blue';
+                del.innerHTML = '<i class="fa-solid fa-xmark"></i>';
+                del.onclick = function (e) { e.stopPropagation(); app.handlers.deleteItem(item.id); };
+                el.appendChild(del);
+            }
+            list.appendChild(el);
+        }
+
+        if (window.Sortable) {
+            if (list._sortable) list._sortable.destroy();
+            list._sortable = new Sortable(list, { animation: 150, onEnd: function () { app.handlers.reorderItems(); } });
         }
     },
 
@@ -241,6 +474,14 @@ var app = {
         var d = new Date(); var day = d.getDay();
         var diff = d.getDate() - day + (day === 0 ? -6 : 1);
         var mon = new Date(d.setDate(diff)); mon.setDate(mon.getDate() + (off * 7)); return mon;
+    },
+
+    getWeekNumber: function (d) {
+        var date = new Date(d.getTime());
+        date.setHours(0, 0, 0, 0);
+        date.setDate(date.getDate() + 3 - (date.getDay() + 6) % 7);
+        var week1 = new Date(date.getFullYear(), 0, 4);
+        return 1 + Math.round(((date.getTime() - week1.getTime()) / 86400000 - 3 + (week1.getDay() + 6) % 7) / 7);
     },
 
     saveData: function () {
@@ -289,41 +530,25 @@ var app = {
                 (function (m) {
                     var el = document.createElement('div'); el.className = 'sidebar-item'; el.style.color = '#333';
                     el.innerHTML = '<div class="member-avatar" style="background:' + m.color + '">' + (m.name || 'U')[0] + '</div><span>' + m.name + '</span>';
-                    el.onclick = function () { app.auth.promptPin(m); }; list.appendChild(el);
+                    el.onclick = function () {
+                        app.state.currentUser = m;
+                        app.state.selectedMemberId = m.id;
+                        app.ui.closeModals();
+                        app.render();
+                    }; list.appendChild(el);
                 })(app.state.members[i]);
             }
         },
-        promptPin: function (m) {
-            document.getElementById('login-user-list').classList.add('hidden');
-            document.getElementById('login-pin-container').classList.remove('hidden');
-            document.getElementById('login-selected-user').textContent = m.name;
-            var input = document.getElementById('login-pin-input');
-            if (input) {
-                input.setAttribute('data-userid', m.id);
-                input.value = '';
-                input.focus();
-            }
-        },
-        submitPin: function () {
-            var input = document.getElementById('login-pin-input');
-            var userId = input.getAttribute('data-userid');
-            var m = null;
-            for (var i = 0; i < app.state.members.length; i++) { if (app.state.members[i].id === userId) m = app.state.members[i]; }
-            if (m && m.pin === input.value) { app.state.currentUser = m; app.ui.closeModals(); app.render(); }
-            else { alert("Wrong PIN"); input.value = ''; }
-        },
-        resetLogin: function () { document.getElementById('login-pin-container').classList.add('hidden'); document.getElementById('login-user-list').classList.remove('hidden'); },
+        resetLogin: function () { app.state.currentUser = null; app.auth.showLogin(); },
         logout: function () { app.state.currentUser = null; app.auth.showLogin(); }
     },
 
     handlers: {
         changeWeek: function (dir) { app.state.currentWeekOffset += dir; app.render(); },
+        gotoToday: function () { app.state.currentWeekOffset = 0; app.render(); },
         onAddSidebarItem: function () {
             if (app.state.view === 'calendar') {
-                document.getElementById('member-modal-title').textContent = 'New Family Member';
-                document.getElementById('btn-delete-member').style.display = 'none';
-                var form = document.getElementById('form-member'); form.reset(); form.querySelector('[name=id]').value = '';
-                app.ui.openModal('member');
+                app.handlers.onCellClick(new Date(), 12);
             } else {
                 app.ui.openModal('store');
             }
@@ -336,7 +561,6 @@ var app = {
             form.querySelector('[name=id]').value = m.id;
             form.querySelector('[name=name]').value = m.name;
             form.querySelector('[name=color]').value = m.color;
-            form.querySelector('[name=pin]').value = m.pin;
         },
         deleteMemberConfirm: function (id) {
             if (confirm('Delete this family member?')) {
@@ -369,7 +593,8 @@ var app = {
             for (var i = 0; i < app.state.members.length; i++) {
                 var m = app.state.members[i];
                 var opt = document.createElement('option'); opt.value = m.id; opt.textContent = m.name;
-                if (app.state.currentUser && m.id === app.state.currentUser.id) opt.selected = true;
+                if (app.state.selectedMemberId && m.id === app.state.selectedMemberId) opt.selected = true;
+                else if (!app.state.selectedMemberId && app.state.currentUser && m.id === app.state.currentUser.id) opt.selected = true;
                 select.appendChild(opt);
             }
             form.querySelector('[name=date]').value = d.toISOString().split('T')[0];
@@ -404,7 +629,7 @@ var app = {
             app.saveData(); app.ui.closeModals(); app.render();
         },
         deleteStore: function (id) {
-            if (!confirm('Delete this store?')) return;
+            if (!confirm('Delete this list?')) return;
             var newStores = [];
             for (var i = 0; i < app.state.storeTypes.length; i++) { if (app.state.storeTypes[i].id !== id) newStores.push(app.state.storeTypes[i]); }
             app.state.storeTypes = newStores;
@@ -414,24 +639,151 @@ var app = {
             if (app.state.selectedStoreId === id) app.state.selectedStoreId = (app.state.storeTypes[0] ? app.state.storeTypes[0].id : null);
             app.saveData(); app.render();
         },
+        moveStore: function (idx, dir) {
+            // ... (keep existing)
+            var newIdx = idx + dir;
+            if (newIdx < 0 || newIdx >= app.state.storeTypes.length) return;
+            var temp = app.state.storeTypes[idx];
+            app.state.storeTypes[idx] = app.state.storeTypes[newIdx];
+            app.state.storeTypes[newIdx] = temp;
+            app.saveData(); app.render();
+        },
+        addHeading: function () {
+            app.ui.openModal('heading');
+            var form = document.getElementById('form-heading');
+            if (form) {
+                form.reset();
+                setTimeout(function () { form.querySelector('[name=name]').focus(); }, 100);
+            }
+        },
         onQuickAddItem: function (sid) {
-            var input = document.querySelector('.input-group input');
+            var input = document.getElementById('shopping-input');
             if (input && input.value.trim()) {
-                app.state.groceryItems.push({ id: 'i' + Date.now(), storeId: sid, text: input.value, checked: false });
-                input.value = ''; app.saveData(); app.render();
+                var val = input.value.trim();
+                var text = val;
+
+                var newItem = {
+                    id: 'i' + Date.now(),
+                    storeId: sid,
+                    text: text,
+                    checked: false,
+                    isHeader: false
+                };
+
+                if (app.state.selectedHeaderId) {
+                    // Find index of selected header
+                    var idx = -1;
+                    for (var k = 0; k < app.state.groceryItems.length; k++) {
+                        if (app.state.groceryItems[k].id === app.state.selectedHeaderId) { idx = k; break; }
+                    }
+                    if (idx !== -1) {
+                        app.state.groceryItems.splice(idx + 1, 0, newItem);
+                    } else {
+                        app.state.groceryItems.push(newItem);
+                    }
+                } else {
+                    app.state.groceryItems.push(newItem);
+                }
+
+                input.value = '';
+                app.saveData();
+                app.renderShoppingListItems();
+
+                // Keep window and focus
+                setTimeout(function () {
+                    var inputRetry = document.getElementById('shopping-input');
+                    if (inputRetry) {
+                        inputRetry.focus();
+                        inputRetry.select();
+                    }
+                }, 50);
             }
         },
         toggleItem: function (id) {
-            for (var i = 0; i < app.state.groceryItems.length; i++) { if (app.state.groceryItems[i].id === id) app.state.groceryItems[i].checked = !app.state.groceryItems[i].checked; }
+            for (var i = 0; i < app.state.groceryItems.length; i++) {
+                var item = app.state.groceryItems[i];
+                if (item.id === id && !item.isHeader) item.checked = !item.checked;
+            }
             app.saveData(); app.render();
         },
         deleteItem: function (id) {
             var newList = []; for (var i = 0; i < app.state.groceryItems.length; i++) { if (app.state.groceryItems[i].id !== id) newList.push(app.state.groceryItems[i]); }
             app.state.groceryItems = newList; app.saveData(); app.render();
         },
-        clearCompleted: function (sid) {
-            var newList = []; for (var i = 0; i < app.state.groceryItems.length; i++) { if (!app.state.groceryItems[i].checked || app.state.groceryItems[i].storeId !== sid) newList.push(app.state.groceryItems[i]); }
-            app.state.groceryItems = newList; app.saveData(); app.render();
+        deleteAll: function (sid, headId) {
+            if (!confirm('Delete all items' + (headId ? ' under this heading' : '') + '?')) return;
+            var newList = [];
+            var inSection = false;
+            for (var i = 0; i < app.state.groceryItems.length; i++) {
+                var item = app.state.groceryItems[i];
+                if (headId) {
+                    if (item.id === headId) { inSection = true; newList.push(item); continue; }
+                    if (inSection && item.isHeader) inSection = false;
+                    if (!inSection || item.storeId !== sid) newList.push(item);
+                } else {
+                    if (item.storeId !== sid) newList.push(item);
+                }
+            }
+            app.state.groceryItems = newList; app.saveData(); app.renderShoppingListItems();
+        },
+        clearCompleted: function (sid, headId) {
+            var newList = [];
+            var inSection = false;
+            for (var i = 0; i < app.state.groceryItems.length; i++) {
+                var item = app.state.groceryItems[i];
+                if (headId) {
+                    if (item.id === headId) { inSection = true; newList.push(item); continue; }
+                    if (inSection && item.isHeader) inSection = false;
+                    if (inSection && item.storeId === sid && item.checked) continue;
+                    newList.push(item);
+                } else {
+                    if (item.storeId !== sid || !item.checked) newList.push(item);
+                }
+            }
+            app.state.groceryItems = newList; app.saveData(); app.renderShoppingListItems();
+        },
+        showShoppingMenu: function (e, sid, headId) {
+            e.stopPropagation(); e.preventDefault();
+            var existing = document.querySelector('.context-menu');
+            if (existing) existing.remove();
+
+            var menu = document.createElement('div');
+            menu.className = 'context-menu';
+
+            var items = [
+                { text: 'Clear Completed', icon: 'fa-check-double', action: function () { app.handlers.clearCompleted(sid, headId); } },
+                { text: 'Delete All', icon: 'fa-trash-can', danger: true, action: function () { app.handlers.deleteAll(sid, headId); } }
+            ];
+
+            items.forEach(function (item) {
+                var el = document.createElement('div');
+                el.className = 'menu-item' + (item.danger ? ' danger' : '');
+                el.innerHTML = '<i class="fa-solid ' + item.icon + '"></i>' + item.text;
+                el.onclick = function () { item.action(); menu.remove(); };
+                menu.appendChild(el);
+            });
+
+            document.body.appendChild(menu);
+
+            var rect = e.target.getBoundingClientRect();
+            menu.style.top = rect.bottom + 5 + 'px';
+            menu.style.right = (window.innerWidth - rect.right) + 'px';
+
+            var closer = function () { menu.remove(); document.removeEventListener('click', closer); };
+            setTimeout(function () { document.addEventListener('click', closer); }, 10);
+        },
+        reorderItems: function () {
+            var list = document.getElementById('shopping-list-items');
+            if (!list) return;
+            var newOrderIds = Array.prototype.slice.call(list.children).map(function (el) { return el.getAttribute('data-id'); });
+            var sid = app.state.selectedStoreId;
+            var otherItems = app.state.groceryItems.filter(function (i) { return i.storeId !== sid; });
+            var storeItems = app.state.groceryItems.filter(function (i) { return i.storeId === sid; });
+            var sortedStoreItems = newOrderIds.map(function (id) {
+                for (var k = 0; k < storeItems.length; k++) { if (storeItems[k].id === id) return storeItems[k]; }
+            }).filter(Boolean);
+            app.state.groceryItems = otherItems.concat(sortedStoreItems);
+            app.saveData();
         }
     },
 
@@ -440,6 +792,12 @@ var app = {
             document.getElementById('modal-overlay').classList.remove('hidden');
             var modals = document.querySelectorAll('.modal'); for (var i = 0; i < modals.length; i++) modals[i].classList.add('hidden');
             var target = document.getElementById('modal-' + n); if (target) target.classList.remove('hidden');
+
+            if (n === 'settings') {
+                var f = document.getElementById('form-settings');
+                f.querySelector('[name=startHour]').value = app.state.settings.startHour || 8;
+                f.querySelector('[name=endHour]').value = app.state.settings.endHour || 20;
+            }
         },
         closeModals: function () {
             if (!app.state.currentUser) return;
@@ -452,11 +810,16 @@ var app = {
     },
 
     setupEventListeners: function () {
+        document.getElementById('modal-overlay').onclick = function (e) {
+            if (e.target.id === 'modal-overlay') {
+                app.ui.closeModals();
+            }
+        };
         var formMem = document.getElementById('form-member');
         if (formMem) formMem.onsubmit = function (e) {
             e.preventDefault(); var fd = new FormData(e.target);
             var id = fd.get('id');
-            var memberData = { id: id || ('m' + Date.now()), name: fd.get('name'), color: fd.get('color'), pin: fd.get('pin') };
+            var memberData = { id: id || ('m' + Date.now()), name: fd.get('name'), color: fd.get('color') };
             if (id) {
                 for (var i = 0; i < app.state.members.length; i++) { if (app.state.members[i].id === id) app.state.members[i] = memberData; }
             } else {
@@ -482,6 +845,51 @@ var app = {
             } else { app.state.appointments.push(apptData); }
             app.saveData(); app.ui.closeModals(); app.render(); e.target.reset();
         };
+        var formHead = document.getElementById('form-heading');
+        if (formHead) formHead.onsubmit = function (e) {
+            e.preventDefault();
+            var fd = new FormData(e.target);
+            var name = fd.get('name');
+            if (!name) return;
+
+            var newItem = {
+                id: 'i' + Date.now(),
+                storeId: app.state.selectedStoreId,
+                text: name,
+                checked: false,
+                isHeader: true
+            };
+
+            if (app.state.selectedHeaderId) {
+                var idx = -1;
+                for (var k = 0; k < app.state.groceryItems.length; k++) {
+                    if (app.state.groceryItems[k].id === app.state.selectedHeaderId) { idx = k; break; }
+                }
+                if (idx !== -1) {
+                    app.state.groceryItems.splice(idx + 1, 0, newItem);
+                } else {
+                    app.state.groceryItems.push(newItem);
+                }
+            } else {
+                app.state.groceryItems.push(newItem);
+            }
+            app.saveData();
+            app.ui.closeModals();
+            app.renderShoppingListItems();
+        };
+
+        var formSet = document.getElementById('form-settings');
+        if (formSet) {
+            formSet.onsubmit = function (e) {
+                e.preventDefault();
+                var fd = new FormData(e.target);
+                app.state.settings.startHour = parseInt(fd.get('startHour'));
+                app.state.settings.endHour = parseInt(fd.get('endHour'));
+                app.saveData();
+                app.ui.closeModals();
+                app.render();
+            };
+        }
     }
 };
 

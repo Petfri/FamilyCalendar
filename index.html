@@ -12,6 +12,7 @@
     <link rel="stylesheet" href="style.css">
     <link rel="manifest" href="manifest.json">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
     <meta name="theme-color" content="#002c3a">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -24,8 +25,8 @@
         <aside class="sidebar" id="sidebar">
             <div class="brand"
                 style="display: flex; align-items: center; gap: 12px; padding: 0 10px; margin-bottom: 25px; color: white;">
-                <i class="fa-solid fa-calendar-check" style="font-size: 1.4rem; opacity: 0.9;"></i>
-                <h1 style="font-size: 1.15rem; font-weight: 700; letter-spacing: -0.5px;">Family Plan</h1>
+                <i class="fa-solid fa-calendar-check" style="font-size: 1.2rem; opacity: 0.9;"></i>
+                <h1 style="font-size: 1rem; font-weight: 700; letter-spacing: -0.5px;">Family Plan</h1>
             </div>
             <div class="sidebar-header">
                 <h2 id="sidebar-title">Members</h2>
@@ -45,12 +46,20 @@
                         <i class="fa-solid fa-calendar-days"></i> Calendar
                     </button>
                     <button id="nav-shopping" class="nav-btn" onclick="app.switchView('shopping')">
-                        <i class="fa-solid fa-basket-shopping"></i> Shopping
+                        <i class="fa-solid fa-list-check"></i> Lists
                     </button>
                 </nav>
-                <div class="header-actions">
-                    <button class="icon-btn" onclick="app.auth.logout()">
+                <div class="header-actions" style="display:flex; gap:8px; align-items:center; margin-left: auto;">
+                    <button class="icon-btn-dark" onclick="app.ui.openModal('settings')" title="Calendar Settings">
+                        <i class="fa-solid fa-gear"></i>
+                    </button>
+                    <button class="icon-btn-dark" onclick="app.auth.logout()" title="Logout">
                         <i class="fa-solid fa-right-from-bracket"></i>
+                    </button>
+                    <button class="icon-btn-primary"
+                        style="width:40px; height:40px; border-radius:50%; margin-left: 10px; box-shadow: 0 4px 10px rgba(0,44,58,0.3);"
+                        onclick="app.handlers.onAddSidebarItem()" title="Add New">
+                        <i class="fa-solid fa-plus"></i>
                     </button>
                 </div>
             </header>
@@ -69,26 +78,25 @@
                 <input type="hidden" name="id">
                 <div class="form-group"><label>Name</label><input type="text" name="name" required></div>
                 <div class="form-group"><label>Color</label><input type="color" name="color" value="#002c3a"></div>
-                <div class="form-group"><label>PIN</label><input type="password" name="pin" maxlength="4" required
-                        placeholder="4 digits"></div>
-                <div class="form-actions" style="justify-content: space-between;">
-                    <button type="button" id="btn-delete-member" class="btn-text" style="color:red; display:none;"
-                        onclick="app.handlers.deleteMember()">Delete</button>
-                    <div style="display:flex; gap:12px;">
-                        <button type="button" class="btn-text" onclick="app.ui.closeModals()">Cancel</button>
-                        <button type="submit" class="btn-primary">Save</button>
-                    </div>
+                <div class="form-actions" style="display:flex; align-items:center; gap:12px;">
+                    <button type="button" class="icon-btn-ghost" onclick="app.ui.closeModals()"><i
+                            class="fa-solid fa-xmark"></i></button>
+                    <button type="submit" class="icon-btn-primary"><i class="fa-solid fa-check"></i></button>
+                    <button type="button" id="btn-delete-member" class="icon-btn danger"
+                        style="display:none; margin-left: auto;" onclick="app.handlers.deleteMemberConfirm()"><i
+                            class="fa-solid fa-trash-can"></i></button>
                 </div>
             </form>
         </div>
         <div id="modal-store" class="modal hidden">
-            <h3>New Store</h3>
+            <h3>New List</h3>
             <form id="form-store">
-                <div class="form-group"><label>Store Name</label><input type="text" name="name" required
-                        placeholder="e.g. Walmart, IKEA"></div>
-                <div class="form-actions">
-                    <button type="button" class="btn-text" onclick="app.ui.closeModals()">Cancel</button>
-                    <button type="submit" class="btn-primary">Create Store</button>
+                <div class="form-group"><label>List Name</label><input type="text" name="name" required
+                        placeholder="e.g. Shopping, To-Do"></div>
+                <div class="form-actions" style="display:flex; align-items:center; gap:12px;">
+                    <button type="button" class="icon-btn-ghost" onclick="app.ui.closeModals()"><i
+                            class="fa-solid fa-xmark"></i></button>
+                    <button type="submit" class="icon-btn-primary"><i class="fa-solid fa-check"></i></button>
                 </div>
             </form>
         </div>
@@ -105,13 +113,13 @@
                 </div>
                 <div class="form-group"><label>Note</label><textarea name="comment" rows="2"
                         placeholder="Notes..."></textarea></div>
-                <div class="form-actions" style="justify-content: space-between;">
-                    <button type="button" id="btn-delete-appt" class="btn-text" style="color:red; display:none;"
-                        onclick="app.handlers.deleteAppointment()">Delete</button>
-                    <div style="display:flex; gap:12px;">
-                        <button type="button" class="btn-text" onclick="app.ui.closeModals()">Cancel</button>
-                        <button type="submit" class="btn-primary">Save</button>
-                    </div>
+                <div class="form-actions" style="display:flex; align-items:center; gap:12px;">
+                    <button type="button" class="icon-btn-ghost" onclick="app.ui.closeModals()"><i
+                            class="fa-solid fa-xmark"></i></button>
+                    <button type="submit" class="icon-btn-primary"><i class="fa-solid fa-check"></i></button>
+                    <button type="button" id="btn-delete-appt" class="icon-btn danger"
+                        style="display:none; margin-left: auto;" onclick="app.handlers.deleteAppointment()"><i
+                            class="fa-solid fa-trash-can"></i></button>
                 </div>
             </form>
         </div>
@@ -121,21 +129,42 @@
             <div style="text-align:center;">
                 <button type="button" class="btn-text" onclick="app.ui.openModal('member')">+ Add Family Member</button>
             </div>
-            <div id="login-pin-container" class="hidden" style="text-align:center; margin-top:20px;">
-                <h4 id="login-selected-user"></h4>
-                <input type="password" id="login-pin-input"
-                    style="font-size:1.5rem; width:100px; text-align:center; margin-bottom:15px; border: 1px solid #ddd; border-radius: 8px; padding: 10px;"
-                    maxlength="4">
-                <div class="form-actions" style="justify-content:center;">
-                    <button type="button" class="btn-text" onclick="app.auth.resetLogin()">Back</button>
-                    <button type="button" class="btn-primary" onclick="app.auth.submitPin()">OK</button>
+        </div>
+        <div id="modal-heading" class="modal hidden">
+            <h3>New Heading</h3>
+            <form id="form-heading">
+                <div class="form-group">
+                    <label>Heading Name</label>
+                    <input type="text" name="name" required placeholder="e.g. Dairy, Vegetables">
                 </div>
-            </div>
+                <div class="form-actions" style="display:flex; align-items:center; gap:12px;">
+                    <button type="button" class="icon-btn-ghost" onclick="app.ui.closeModals()"><i
+                            class="fa-solid fa-xmark"></i></button>
+                    <button type="submit" class="icon-btn-primary"><i class="fa-solid fa-check"></i></button>
+                </div>
+            </form>
+        </div>
+        <div id="modal-settings" class="modal hidden">
+            <h3>Calendar Settings</h3>
+            <form id="form-settings">
+                <div class="form-row">
+                    <div class="form-group"><label>Start Hour (0-23)</label><input type="number" name="startHour"
+                            min="0" max="23"></div>
+                    <div class="form-group"><label>End Hour (0-23)</label><input type="number" name="endHour" min="0"
+                            max="23"></div>
+                </div>
+                <div class="form-actions" style="display:flex; align-items:center; gap:12px;">
+                    <button type="button" class="icon-btn-ghost" onclick="app.ui.closeModals()"><i
+                            class="fa-solid fa-xmark"></i></button>
+                    <button type="submit" class="icon-btn-primary"><i class="fa-solid fa-check"></i></button>
+                </div>
+            </form>
         </div>
     </div>
-    <div style="position:fixed; bottom:5px; right:5px; font-size:10px; opacity:0.3; pointer-events:none;">v3.3
-        ultra-compatible</div>
-    <script src="app.js?v=20"></script>
+    </div>
+    <div style="position:fixed; bottom:5px; right:5px; font-size:10px; opacity:0.3; pointer-events:none;">v7.5
+        Drag & Drop Reordering</div>
+    <script src="app.js?v=33"></script>
 </body>
 
 </html>
