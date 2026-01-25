@@ -126,7 +126,8 @@ var app = {
                     el.style.display = 'flex'; el.style.justifyContent = 'space-between'; el.style.alignItems = 'center';
 
                     var left = document.createElement('div');
-                    left.style.display = 'flex'; left.style.alignItems = 'center'; left.style.gap = '8px'; left.style.flex = '1';
+                    left.className = 'drag-handle';
+                    left.style.display = 'flex'; left.style.alignItems = 'center'; left.style.gap = '12px'; left.style.flex = '1';
                     left.innerHTML = '<div class="member-avatar" style="background:' + m.color + '">' + (m.name || 'U')[0] + '</div><span>' + m.name + '</span>';
                     left.onclick = function () {
                         app.state.selectedMemberId = m.id;
@@ -157,8 +158,9 @@ var app = {
                     el.style.display = 'flex'; el.style.justifyContent = 'space-between'; el.style.alignItems = 'center';
 
                     var left = document.createElement('div');
-                    left.style.display = 'flex'; left.style.alignItems = 'center'; left.style.gap = '8px'; left.style.flex = '1';
-                    left.innerHTML = '<i class="fa-solid fa-list"></i><span>' + s.name + '</span>';
+                    left.className = 'drag-handle';
+                    left.style.display = 'flex'; left.style.alignItems = 'center'; left.style.gap = '12px'; left.style.flex = '1';
+                    left.innerHTML = '<i class="fa-solid fa-layer-group"></i><span>' + s.name + '</span>';
                     left.onclick = function () { app.state.selectedStoreId = s.id; app.render(); };
 
                     var right = document.createElement('div');
@@ -185,7 +187,8 @@ var app = {
                 animation: 150,
                 ghostClass: 'sortable-ghost',
                 draggable: '.sidebar-item',
-                delay: 150,
+                handle: '.drag-handle',
+                delay: 100,
                 delayOnTouchOnly: true,
                 onEnd: function () {
                     var newOrderIds = Array.prototype.slice.call(list.children).map(function (el) { return el.getAttribute('data-id'); });
@@ -341,7 +344,7 @@ var app = {
                                     html += '<span style="font-weight:900; font-size:0.7rem; margin-left:4px;">N</span>';
                                 }
                                 if (appt.repeatType && appt.repeatType !== 'none') {
-                                    html += '<i class="fa-solid fa-repeat" style="font-size:0.6rem; opacity:0.6; margin-left:4px;"></i>';
+                                    html += '<span style="font-weight:900; font-size:0.7rem; margin-left:4px;">S</span>';
                                 }
                                 card.innerHTML = html;
                                 card.onclick = function (e) { e.stopPropagation(); app.handlers.onEditAppointment(appt, cellDate); };
@@ -466,7 +469,7 @@ var app = {
             el.setAttribute('data-id', item.id);
 
             if (item.isHeader) {
-                el.innerHTML = '<span style="flex:1; margin-left:0; font-weight:800;">' + item.text + '</span>';
+                el.innerHTML = '<span class="drag-handle" style="flex:1; margin-left:0; font-weight:800; padding: 5px 0;">' + item.text + '</span>';
                 var hOpt = document.createElement('button');
                 hOpt.className = 'delete-btn-blue';
                 hOpt.innerHTML = '<i class="fa-solid fa-ellipsis-vertical"></i>';
@@ -474,7 +477,7 @@ var app = {
                 el.appendChild(hOpt);
             } else {
                 var check = '<div class="check-circle' + (item.checked ? ' checked' : '') + '"></div>';
-                el.innerHTML = check + '<span style="flex:1; margin-left:15px; ' + (item.checked ? 'text-decoration:line-through; opacity:0.5;' : '') + '">' + item.text + '</span>';
+                el.innerHTML = check + '<span class="drag-handle" style="flex:1; margin-left:15px; padding: 5px 0; ' + (item.checked ? 'text-decoration:line-through; opacity:0.5;' : '') + '">' + item.text + '</span>';
             }
 
             el.onclick = function (e) {
@@ -503,8 +506,9 @@ var app = {
                 animation: 150,
                 delay: 150,
                 delayOnTouchOnly: true,
-                filter: '.check-circle, .delete-btn-blue',
-                preventOnFilter: false,
+                handle: '.drag-handle',
+                filter: '.check-circle, .delete-btn-blue, button, i',
+                preventOnFilter: true,
                 onEnd: function () { app.handlers.reorderItems(); }
             });
         }

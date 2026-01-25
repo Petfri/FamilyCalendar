@@ -75,7 +75,6 @@ body {
     padding: 10px 12px;
     border-radius: 10px;
     margin-bottom: 6px;
-    cursor: pointer;
     transition: var(--transition);
     display: flex;
     align-items: center;
@@ -304,13 +303,20 @@ body {
     border-radius: 8px;
     margin-bottom: 4px;
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.02);
-    cursor: grab;
     user-select: none;
     touch-action: manipulation;
 }
 
-.shopping-item:active {
-    cursor: grabbing;
+.drag-handle {
+    cursor: grab !important;
+    cursor: -webkit-grab !important;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+.drag-handle:active {
+    cursor: grabbing !important;
+    cursor: -webkit-grabbing !important;
 }
 
 .sortable-ghost {
