@@ -38,9 +38,18 @@
         </aside>
         <div class="content-wrapper">
             <header class="header">
-                <button id="menu-toggle" onclick="app.ui.toggleSidebar(true)">
-                    <i class="fa-solid fa-bars"></i>
-                </button>
+                <div id="header-left" style="display:flex; align-items:center; gap:8px;">
+                    <button id="menu-toggle" class="icon-btn" onclick="app.ui.toggleSidebar(true)">
+                        <i class="fa-solid fa-bars"></i>
+                    </button>
+                    <button class="icon-btn-dark" onclick="app.ui.openModal('settings')" title="Calendar Settings">
+                        <i class="fa-solid fa-gear"></i>
+                    </button>
+                    <button class="icon-btn-dark" onclick="app.auth.logout()" title="Logout">
+                        <i class="fa-solid fa-right-from-bracket"></i>
+                    </button>
+                </div>
+
                 <nav class="main-nav">
                     <button id="nav-calendar" class="nav-btn active" onclick="app.switchView('calendar')">
                         <i class="fa-solid fa-calendar-days"></i> Calendar
@@ -49,16 +58,13 @@
                         <i class="fa-solid fa-list-check"></i> Lists
                     </button>
                 </nav>
-                <div class="header-actions" style="display:flex; gap:8px; align-items:center; margin-left: auto;">
-                    <button class="icon-btn-dark" onclick="app.ui.openModal('settings')" title="Calendar Settings">
-                        <i class="fa-solid fa-gear"></i>
+
+                <div class="header-right" style="display:flex; gap:8px; align-items:center; margin-left: auto;">
+                    <button id="btn-undo" class="icon-btn-dark" onclick="app.handlers.undo()" title="Undo Last Change"
+                        style="background: var(--accent); color: white; display: none;">
+                        <i class="fa-solid fa-rotate-left"></i>
                     </button>
-                    <button class="icon-btn-dark" onclick="app.auth.logout()" title="Logout">
-                        <i class="fa-solid fa-right-from-bracket"></i>
-                    </button>
-                    <button class="icon-btn-primary"
-                        style="width:40px; height:40px; border-radius:50%; margin-left: 10px; box-shadow: 0 4px 10px rgba(0,44,58,0.3);"
-                        onclick="app.handlers.onAddSidebarItem()" title="Add New">
+                    <button class="icon-btn-primary" onclick="app.handlers.onAddSidebarItem()" title="Add New">
                         <i class="fa-solid fa-plus"></i>
                     </button>
                 </div>
@@ -89,14 +95,20 @@
             </form>
         </div>
         <div id="modal-store" class="modal hidden">
-            <h3>New List</h3>
+            <h3 id="store-modal-title">New List</h3>
             <form id="form-store">
-                <div class="form-group"><label>List Name</label><input type="text" name="name" required
-                        placeholder="e.g. Shopping, To-Do"></div>
+                <input type="hidden" name="id">
+                <div class="form-group">
+                    <label>List Name</label>
+                    <input type="text" name="name" required placeholder="e.g. Shopping, To-Do">
+                </div>
                 <div class="form-actions" style="display:flex; align-items:center; gap:12px;">
                     <button type="button" class="icon-btn-ghost" onclick="app.ui.closeModals()"><i
                             class="fa-solid fa-xmark"></i></button>
                     <button type="submit" class="icon-btn-primary"><i class="fa-solid fa-check"></i></button>
+                    <button type="button" id="btn-delete-store" class="icon-btn danger"
+                        style="display:none; margin-left: auto;" onclick="app.handlers.deleteStoreAction()"><i
+                            class="fa-solid fa-trash-can"></i></button>
                 </div>
             </form>
         </div>
@@ -104,6 +116,7 @@
             <h3>Appointment</h3>
             <form id="form-appointment">
                 <input type="hidden" name="id">
+                <input type="hidden" name="occurrenceDate">
                 <div class="form-group"><label>Title</label><input type="text" name="title" required></div>
                 <div class="form-group"><label>Member</label><select name="memberId" id="appt-member-select"></select>
                 </div>
@@ -113,6 +126,33 @@
                 </div>
                 <div class="form-group"><label>Note</label><textarea name="comment" rows="2"
                         placeholder="Notes..."></textarea></div>
+
+                <div style="background: #f8f9fa; padding: 12px; border-radius: 12px; margin-bottom: 20px;">
+                    <div class="form-group" style="margin-bottom: 8px;">
+                        <label style="font-size: 0.75rem;">Repeat</label>
+                        <select name="repeatType" onchange="app.ui.toggleRepeatUI(this.value)">
+                            <option value="none">None</option>
+                            <option value="weekly">Weekly</option>
+                            <option value="monthly">Monthly</option>
+                        </select>
+                    </div>
+
+                    <div id="repeat-freq-wrap" style="display:none; margin-top: 8px;">
+                        <label id="repeat-duration-label"
+                            style="font-size: 0.7rem; color: #666; margin-bottom: 4px; display: block;">Total
+                            weeks</label>
+                        <div class="button-group" id="repeat-freq-btns">
+                            <button type="button" class="group-btn active" data-val="1">1</button>
+                            <button type="button" class="group-btn" data-val="2">2</button>
+                            <button type="button" class="group-btn" data-val="3">3</button>
+                            <button type="button" class="group-btn" data-val="4">4</button>
+                            <button type="button" class="group-btn" data-val="custom" title="Custom"><i
+                                    class="fa-solid fa-circle-chevron-down"></i></button>
+                        </div>
+                        <input type="number" id="repeat-frequency-input" name="repeatFrequency" value="1" min="1"
+                            max="52" style="display:none; margin-top:8px;">
+                    </div>
+                </div>
                 <div class="form-actions" style="display:flex; align-items:center; gap:12px;">
                     <button type="button" class="icon-btn-ghost" onclick="app.ui.closeModals()"><i
                             class="fa-solid fa-xmark"></i></button>
@@ -159,6 +199,17 @@
                     <button type="submit" class="icon-btn-primary"><i class="fa-solid fa-check"></i></button>
                 </div>
             </form>
+        </div>
+        <div id="modal-choice" class="modal hidden">
+            <h3 id="choice-title" style="text-align:center;">Action</h3>
+            <p id="choice-text" style="margin-bottom:20px; font-size:1rem; opacity:0.8; text-align:center;"></p>
+            <div id="choice-buttons" style="display:flex; flex-direction:column; gap:12px; margin-bottom: 20px;">
+                <!-- Dynamic Buttons -->
+            </div>
+            <div class="form-actions" style="display:flex; align-items:center;">
+                <button type="button" class="icon-btn-ghost" onclick="app.ui.closeModals()"><i
+                        class="fa-solid fa-xmark"></i></button>
+            </div>
         </div>
     </div>
     </div>

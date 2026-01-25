@@ -33,7 +33,12 @@ var app = {
         selectedStoreId: null,
         selectedMemberId: null,
         selectedHeaderId: null,
-        settings: { startHour: 8, endHour: 20 }
+        settings: { startHour: 8, endHour: 20 },
+        history: [],
+        maxHistory: 10,
+        draggingAppt: null,
+        draggingOccurrenceDate: null,
+        dropTarget: null
     },
 
     init: function () {
@@ -48,6 +53,9 @@ var app = {
             this.loadCloudData();
             this.initRealtime();
         }
+
+        // Push initial state to history
+        this.saveData(false);
     },
 
     loadLocalData: function () {
@@ -80,6 +88,7 @@ var app = {
     },
 
     render: function () {
+        var activeId = document.activeElement ? document.activeElement.id : null;
         var main = document.getElementById('main-view');
         if (!main) return;
         main.innerHTML = '';
@@ -87,6 +96,18 @@ var app = {
 
         if (this.state.view === 'calendar') { this.renderCalendar(main); }
         else { this.renderShopping(main); }
+
+        if (activeId) {
+            var el = document.getElementById(activeId);
+            if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA')) {
+                el.focus();
+                // Ensure cursor is at the end for text inputs
+                if (el.tagName === 'INPUT' && el.type === 'text') {
+                    var val = el.value;
+                    el.value = ''; el.value = val;
+                }
+            }
+        }
     },
 
     renderSidebar: function () {
@@ -143,11 +164,13 @@ var app = {
                     var right = document.createElement('div');
                     right.style.display = 'flex'; right.style.alignItems = 'center';
 
-                    var del = document.createElement('button');
-                    del.className = 'delete-btn-ghost'; del.innerHTML = '<i class="fa-solid fa-xmark"></i>';
-                    del.onclick = function (e) { e.stopPropagation(); app.handlers.deleteStore(s.id); };
+                    var set = document.createElement('button');
+                    set.className = 'delete-btn-ghost';
+                    set.innerHTML = '<i class="fa-solid fa-gear"></i>';
+                    set.style.opacity = '0.4';
+                    set.onclick = function (e) { e.stopPropagation(); app.handlers.onEditStore(s); };
 
-                    right.appendChild(del);
+                    right.appendChild(set);
                     el.appendChild(left);
                     el.appendChild(right);
                     list.appendChild(el);
@@ -188,12 +211,14 @@ var app = {
         var controls = document.createElement('div');
         controls.className = 'calendar-controls';
         var weekNum = this.getWeekNumber(start);
-        var dateInfo = start.getDate() + ' ' + (["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][start.getMonth()]);
+        var endOfWeek = new Date(start); endOfWeek.setDate(start.getDate() + 6);
+        var months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+        var dateInfo = start.getDate() + ' ' + months[start.getMonth()] + ' - ' + endOfWeek.getDate() + ' ' + months[endOfWeek.getMonth()];
         controls.innerHTML = '<div style="display:flex; gap:12px; align-items:center; flex:1; overflow:hidden;">' +
             '<button class="week-nav-btn" onclick="app.handlers.gotoToday()" title="Today" style="border-radius:50%; min-width:36px;"><i class="fa-solid fa-calendar-day"></i></button>' +
-            '<div style="display:flex; flex-direction:column; align-items:flex-start; min-width:70px;">' +
+            '<div style="display:flex; flex-direction:column; align-items:flex-start; min-width:80px;">' +
             '<small style="font-size:0.65rem; font-weight:800; opacity:0.6; text-transform:uppercase; letter-spacing:1px; color:var(--primary);">Week ' + weekNum + '</small>' +
-            '<h3 style="margin:0; line-height:1.2; font-size:1.1rem; letter-spacing:-0.5px;">' + dateInfo + '</h3>' +
+            '<h3 style="margin:0; line-height:1.2; font-size:1.1rem; letter-spacing:-0.5px; white-space:nowrap;">' + dateInfo + '</h3>' +
             '</div>' +
             '<div style="display:flex; align-items:center; gap:8px; flex:1; justify-content:center;">' +
             '<button class="week-nav-btn" onclick="app.handlers.changeWeek(-4)"><i class="fa-solid fa-angles-left"></i></button>' +
@@ -232,8 +257,13 @@ var app = {
         grid.className = 'calendar-grid';
         var hTime = document.createElement('div'); hTime.className = 'grid-header'; hTime.textContent = 'TIME'; grid.appendChild(hTime);
         var days = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'];
+        var today = new Date();
         for (var i = 0; i < 7; i++) {
-            var hDay = document.createElement('div'); hDay.className = 'grid-header'; hDay.textContent = days[i]; grid.appendChild(hDay);
+            var hDay = document.createElement('div');
+            var currentDay = new Date(start); currentDay.setDate(start.getDate() + i);
+            hDay.className = 'grid-header' + (i >= 5 ? ' weekend' : '') + (currentDay.toDateString() === today.toDateString() ? ' today' : '');
+            hDay.textContent = days[i] + ' ' + currentDay.getDate();
+            grid.appendChild(hDay);
         }
 
         var sH = this.state.settings.startHour || 8;
@@ -273,31 +303,29 @@ var app = {
             for (var d = 0; d < 7; d++) {
                 (function (hObj, dayIndex) {
                     var cell = document.createElement('div');
-                    cell.className = 'grid-cell' + (hObj.val % 2 === 0 ? ' row-even' : '');
-                    var cellDate = new Date(start); cellDate.setDate(start.getDate() + dayIndex);
+                    var cellDate = new Date(start);
+                    cellDate.setDate(start.getDate() + dayIndex);
+                    cell.className = 'grid-cell' + (hObj.val % 2 === 0 ? ' row-even' : '') + (dayIndex >= 5 ? ' weekend' : '') + (cellDate.toDateString() === today.toDateString() ? ' today' : '');
 
                     if (hObj.val >= 0 && hObj.val <= 23) {
                         cell.onclick = function () { app.handlers.onCellClick(cellDate, hObj.val); };
                     }
 
+                    cell.ondragover = function (e) { e.preventDefault(); e.target.classList.add('drag-over'); };
+                    cell.ondragleave = function (e) { e.target.classList.remove('drag-over'); };
+                    cell.ondrop = function (e) { e.target.classList.remove('drag-over'); app.handlers.onDrop(e, cellDate, hObj.val === -1 ? 0 : (hObj.val === 24 ? 23 : hObj.val)); };
+
                     var hasAppt = false;
                     for (var j = 0; j < app.state.appointments.length; j++) {
                         (function (appt) {
-                            var ad = new Date(appt.date);
-                            var ah = parseInt(appt.time);
-                            var match = false;
-                            if (ad.toDateString() === cellDate.toDateString()) {
-                                if (hObj.val === -1 && ah < sH) match = true;
-                                else if (hObj.val === 24 && ah > eH) match = true;
-                                else if (ah === hObj.val) match = true;
-                            }
-
-                            if (match) {
+                            if (app.handlers.isMatchingAppointment(appt, cellDate, hObj, sH, eH)) {
                                 hasAppt = true;
                                 var m = null;
                                 for (var k = 0; k < app.state.members.length; k++) { if (app.state.members[k].id === appt.memberId) m = app.state.members[k]; }
                                 var card = document.createElement('div');
                                 card.className = 'appointment-card';
+                                card.draggable = true;
+                                card.ondragstart = function (e) { app.handlers.onDragStart(e, appt, cellDate); };
                                 card.style.background = m ? m.color : '#002c3a';
                                 card.style.color = 'white';
 
@@ -310,8 +338,11 @@ var app = {
                                 if (appt.comment && appt.comment.trim()) {
                                     html += '<span style="font-weight:900; font-size:0.7rem; margin-left:4px;">N</span>';
                                 }
+                                if (appt.repeatType && appt.repeatType !== 'none') {
+                                    html += '<i class="fa-solid fa-repeat" style="font-size:0.6rem; opacity:0.6; margin-left:4px;"></i>';
+                                }
                                 card.innerHTML = html;
-                                card.onclick = function (e) { e.stopPropagation(); app.handlers.onEditAppointment(appt); };
+                                card.onclick = function (e) { e.stopPropagation(); app.handlers.onEditAppointment(appt, cellDate); };
                                 cell.appendChild(card);
                             }
                         })(app.state.appointments[j]);
@@ -484,8 +515,16 @@ var app = {
         return 1 + Math.round(((date.getTime() - week1.getTime()) / 86400000 - 3 + (week1.getDay() + 6) % 7) / 7);
     },
 
-    saveData: function () {
+    saveData: function (skipHistory) {
         var payload = { members: this.state.members, appointments: this.state.appointments, storeTypes: this.state.storeTypes, groceryItems: this.state.groceryItems, settings: this.state.settings };
+
+        if (!skipHistory) {
+            this.state.history.push(JSON.stringify(payload));
+            if (this.state.history.length > this.state.maxHistory) this.state.history.shift();
+            var btn = document.getElementById('btn-undo');
+            if (btn) btn.style.setProperty('display', (this.state.history.length > 1) ? 'flex' : 'none', 'important');
+        }
+
         localStorage.setItem('familySyncData', JSON.stringify(payload));
         if (supabaseClient) { supabaseClient.from('sync_state').upsert({ id: this.syncId, content: payload }).then(function () { }); }
     },
@@ -544,6 +583,21 @@ var app = {
     },
 
     handlers: {
+        undo: function () {
+            if (app.state.history.length <= 1) return;
+            app.state.history.pop(); // Remove current state
+            var prevState = JSON.parse(app.state.history[app.state.history.length - 1]);
+            app.state.members = prevState.members;
+            app.state.appointments = prevState.appointments;
+            app.state.storeTypes = prevState.storeTypes;
+            app.state.groceryItems = prevState.groceryItems;
+            app.state.settings = prevState.settings;
+
+            var btn = document.getElementById('btn-undo');
+            if (btn) btn.style.setProperty('display', (app.state.history.length > 1) ? 'flex' : 'none', 'important');
+
+            app.saveData(true); app.render();
+        },
         changeWeek: function (dir) { app.state.currentWeekOffset += dir; app.render(); },
         gotoToday: function () { app.state.currentWeekOffset = 0; app.render(); },
         onAddSidebarItem: function () {
@@ -551,6 +605,25 @@ var app = {
                 app.handlers.onCellClick(new Date(), 12);
             } else {
                 app.ui.openModal('store');
+                document.getElementById('store-modal-title').textContent = 'New List';
+                document.getElementById('btn-delete-store').style.display = 'none';
+                var form = document.getElementById('form-store');
+                form.reset(); form.querySelector('[name=id]').value = '';
+            }
+        },
+        onEditStore: function (s) {
+            app.ui.openModal('store');
+            document.getElementById('store-modal-title').textContent = 'Edit List';
+            document.getElementById('btn-delete-store').style.display = 'block';
+            var form = document.getElementById('form-store');
+            form.querySelector('[name=id]').value = s.id;
+            form.querySelector('[name=name]').value = s.name;
+        },
+        deleteStoreAction: function () {
+            var id = document.getElementById('form-store').querySelector('[name=id]').value;
+            if (id) {
+                app.handlers.deleteStore(id);
+                app.ui.closeModals();
             }
         },
         onEditMember: function (m) {
@@ -599,17 +672,34 @@ var app = {
             }
             form.querySelector('[name=date]').value = d.toISOString().split('T')[0];
             var timeStr = (h < 10 ? '0' + h : h) + ':00'; form.querySelector('[name=time]').value = timeStr;
+            form.querySelector('[name=repeatType]').value = 'none';
+            app.ui.toggleRepeatUI('none');
+            form.querySelector('[name=repeatFrequency]').value = 4; // Default to 4 forward (one month/series)
             form.querySelector('[name=title]').focus();
         },
-        onEditAppointment: function (appt) {
+        onEditAppointment: function (appt, occurrenceDate) {
             app.ui.openModal('appointment');
             document.getElementById('btn-delete-appt').style.display = 'block';
             var form = document.getElementById('form-appointment');
             form.querySelector('[name=id]').value = appt.id;
+            form.querySelector('[name=occurrenceDate]').value = occurrenceDate ? occurrenceDate.toISOString().split('T')[0] : '';
             form.querySelector('[name=title]').value = appt.title;
             form.querySelector('[name=date]').value = appt.date;
             form.querySelector('[name=time]').value = appt.time;
             form.querySelector('[name=comment]').value = appt.comment || '';
+            form.querySelector('[name=repeatType]').value = appt.repeatType || 'none';
+            app.ui.toggleRepeatUI(appt.repeatType || 'none');
+
+            // Handle Recurrence Buttons
+            var freq = appt.repeatFrequency || 1;
+            var isCustom = (freq > 4);
+            var btns = document.querySelectorAll('#repeat-freq-btns .group-btn');
+            btns.forEach(function (b) {
+                b.classList.remove('active');
+                if (isCustom && b.getAttribute('data-val') === 'custom') b.classList.add('active');
+                if (!isCustom && b.getAttribute('data-val') == freq) b.classList.add('active');
+            });
+            document.getElementById('repeat-frequency-input').style.display = isCustom ? 'block' : 'none';
 
             var select = document.getElementById('appt-member-select'); select.innerHTML = '';
             for (var i = 0; i < app.state.members.length; i++) {
@@ -620,24 +710,60 @@ var app = {
             }
         },
         deleteAppointment: function () {
-            if (!confirm('Delete this appointment?')) return;
-            var id = document.getElementById('form-appointment').querySelector('[name=id]').value;
+            var form = document.getElementById('form-appointment');
+            var id = form.querySelector('[name=id]').value;
+            var occDate = form.querySelector('[name=occurrenceDate]').value;
             if (!id) return;
-            var newList = [];
-            for (var i = 0; i < app.state.appointments.length; i++) { if (app.state.appointments[i].id !== id) newList.push(app.state.appointments[i]); }
-            app.state.appointments = newList;
-            app.saveData(); app.ui.closeModals(); app.render();
+
+            var apt = app.state.appointments.find(function (a) { return a.id === id; });
+            if (!apt) return;
+
+            var choices = [];
+            if (apt.repeatType && apt.repeatType !== 'none' && occDate) {
+                choices.push({
+                    label: 'Only This Day',
+                    danger: true,
+                    action: function () {
+                        if (!apt.exceptions) apt.exceptions = [];
+                        apt.exceptions.push(occDate);
+                        app.saveData(); app.ui.closeModals(); app.render();
+                    }
+                });
+                choices.push({
+                    label: 'Entire Series',
+                    danger: true,
+                    action: function () {
+                        app.state.appointments = app.state.appointments.filter(function (a) { return a.id !== id; });
+                        app.saveData(); app.ui.closeModals(); app.render();
+                    }
+                });
+            } else {
+                choices.push({
+                    label: 'Delete Appointment',
+                    danger: true,
+                    action: function () {
+                        app.state.appointments = app.state.appointments.filter(function (a) { return a.id !== id; });
+                        app.saveData(); app.ui.closeModals(); app.render();
+                    }
+                });
+            }
+            app.ui.showChoiceModal('Delete', 'How would you like to delete this?', choices);
         },
         deleteStore: function (id) {
-            if (!confirm('Delete this list?')) return;
-            var newStores = [];
-            for (var i = 0; i < app.state.storeTypes.length; i++) { if (app.state.storeTypes[i].id !== id) newStores.push(app.state.storeTypes[i]); }
-            app.state.storeTypes = newStores;
-            var newItems = [];
-            for (var j = 0; j < app.state.groceryItems.length; j++) { if (app.state.groceryItems[j].storeId !== id) newItems.push(app.state.groceryItems[j]); }
-            app.state.groceryItems = newItems;
-            if (app.state.selectedStoreId === id) app.state.selectedStoreId = (app.state.storeTypes[0] ? app.state.storeTypes[0].id : null);
-            app.saveData(); app.render();
+            app.ui.showChoiceModal('Delete List', 'Delete this entire list and all its items?', [{
+                label: 'Delete Everything',
+                danger: true,
+                action: function () {
+                    var newStores = [];
+                    for (var i = 0; i < app.state.storeTypes.length; i++) { if (app.state.storeTypes[i].id !== id) newStores.push(app.state.storeTypes[i]); }
+                    app.state.storeTypes = newStores;
+                    var newItems = [];
+                    for (var j = 0; j < app.state.groceryItems.length; j++) { if (app.state.groceryItems[j].storeId !== id) newItems.push(app.state.groceryItems[j]); }
+                    app.state.groceryItems = newItems;
+                    if (app.state.selectedStoreId === id) app.state.selectedStoreId = (app.state.storeTypes[0] ? app.state.storeTypes[0].id : null);
+                    app.saveData(); app.ui.closeModals(); app.render();
+                }
+            }]);
         },
         moveStore: function (idx, dir) {
             // ... (keep existing)
@@ -688,15 +814,7 @@ var app = {
                 input.value = '';
                 app.saveData();
                 app.renderShoppingListItems();
-
-                // Keep window and focus
-                setTimeout(function () {
-                    var inputRetry = document.getElementById('shopping-input');
-                    if (inputRetry) {
-                        inputRetry.focus();
-                        inputRetry.select();
-                    }
-                }, 50);
+                input.focus(); // Immediate focus
             }
         },
         toggleItem: function (id) {
@@ -784,6 +902,124 @@ var app = {
             }).filter(Boolean);
             app.state.groceryItems = otherItems.concat(sortedStoreItems);
             app.saveData();
+        },
+        onDragStart: function (e, appt, occurrenceDate) {
+            app.state.draggingAppt = appt;
+            app.state.draggingOccurrenceDate = occurrenceDate ? occurrenceDate.toISOString().split('T')[0] : null;
+            e.dataTransfer.setData('text/plain', appt.id);
+            e.target.style.opacity = '0.5';
+        },
+        onDrop: function (e, date, hour) {
+            e.preventDefault();
+            var appt = app.state.draggingAppt;
+            if (!appt) return;
+            var target = { date: date.toISOString().split('T')[0], hour: (hour < 10 ? '0' + hour : hour) + ':00' };
+            var draggedDate = app.state.draggingOccurrenceDate;
+
+            var cleanup = function () {
+                app.state.draggingAppt = null;
+                app.state.draggingOccurrenceDate = null;
+                app.state.dropTarget = null;
+            };
+
+            var choices = [];
+            if (appt.repeatType && appt.repeatType !== 'none') {
+                choices.push({
+                    label: 'Move Only This Day',
+                    action: function () {
+                        if (!appt.exceptions) appt.exceptions = [];
+                        if (draggedDate) appt.exceptions.push(draggedDate);
+                        var newAppt = JSON.parse(JSON.stringify(appt));
+                        newAppt.id = 'a' + Date.now() + Math.floor(Math.random() * 1000);
+                        newAppt.repeatType = 'none';
+                        newAppt.date = target.date;
+                        newAppt.time = target.hour;
+                        newAppt.exceptions = [];
+                        app.state.appointments.push(newAppt);
+                        cleanup();
+                        app.saveData(); app.ui.closeModals(); app.render();
+                    }
+                });
+                choices.push({
+                    label: 'Move Entire Series',
+                    action: function () {
+                        if (draggedDate && draggedDate !== appt.date) {
+                            var dOriginal = new Date(appt.date);
+                            var dDragged = new Date(draggedDate);
+                            var dTarget = new Date(target.date);
+                            var diffTime = dTarget.getTime() - dDragged.getTime();
+                            var newBaseDate = new Date(dOriginal.getTime() + diffTime);
+                            appt.date = newBaseDate.toISOString().split('T')[0];
+                        } else {
+                            appt.date = target.date;
+                        }
+                        appt.time = target.hour;
+                        cleanup();
+                        app.saveData(); app.ui.closeModals(); app.render();
+                    }
+                });
+            } else {
+                choices.push({
+                    label: 'Move Appointment',
+                    action: function () {
+                        appt.date = target.date;
+                        appt.time = target.hour;
+                        cleanup();
+                        app.saveData(); app.ui.closeModals(); app.render();
+                    }
+                });
+            }
+
+            choices.push({
+                label: 'Duplicate',
+                secondary: true,
+                action: function () {
+                    var newAppt = JSON.parse(JSON.stringify(appt));
+                    newAppt.id = 'a' + Date.now() + Math.floor(Math.random() * 1000);
+                    newAppt.repeatType = 'none';
+                    newAppt.date = target.date;
+                    newAppt.time = target.hour;
+                    newAppt.exceptions = [];
+                    app.state.appointments.push(newAppt);
+                    cleanup();
+                    app.saveData(); app.ui.closeModals(); app.render();
+                }
+            });
+
+            app.ui.showChoiceModal('Update Appointment', 'What would you like to do?', choices);
+        },
+        isMatchingAppointment: function (appt, cellDate, hObj, sH, eH) {
+            var ad = new Date(appt.date);
+            var ah = parseInt(appt.time);
+            var isBaseMatch = (hObj.val === -1 && ah < sH) || (hObj.val === 24 && ah > eH) || (ah === hObj.val);
+            if (!isBaseMatch) return false;
+
+            var dateStr = cellDate.toISOString().split('T')[0];
+            if (appt.exceptions && appt.exceptions.indexOf(dateStr) !== -1) return false;
+
+            if (ad.toDateString() === cellDate.toDateString()) return true;
+            if (!appt.repeatType || appt.repeatType === 'none') return false;
+
+            var dCell = new Date(cellDate); dCell.setHours(0, 0, 0, 0);
+            var dStart = new Date(ad); dStart.setHours(0, 0, 0, 0);
+            if (dCell < dStart) return false;
+
+            var diffDays = Math.floor((dCell - dStart) / (1000 * 60 * 60 * 24));
+            var limit = appt.repeatFrequency || 1;
+
+            if (appt.repeatType === 'weekly') {
+                var isSameDayOfWeek = (dCell.getDay() === dStart.getDay());
+                var weekDiff = Math.floor(diffDays / 7);
+                // "limit" is total weeks (e.g. 1 means only current week)
+                return isSameDayOfWeek && (weekDiff < limit);
+            }
+            if (appt.repeatType === 'monthly') {
+                if (dCell.getDate() !== dStart.getDate()) return false;
+                var monthsDiff = (dCell.getFullYear() - dStart.getFullYear()) * 12 + (dCell.getMonth() - dStart.getMonth());
+                // "limit" is total months
+                return (monthsDiff < limit);
+            }
+            return false;
         }
     },
 
@@ -806,6 +1042,46 @@ var app = {
         toggleSidebar: function (open) {
             document.getElementById('sidebar').classList.toggle('mobile-open', open);
             document.getElementById('sidebar-overlay').classList.toggle('active', open);
+        },
+        toggleRepeatUI: function (val) {
+            var wrap = document.getElementById('repeat-freq-wrap');
+            var label = document.getElementById('repeat-duration-label');
+            if (val === 'none') {
+                if (wrap) wrap.style.display = 'none';
+            } else {
+                if (wrap) wrap.style.display = 'block';
+                if (label) label.textContent = 'Total ' + (val === 'weekly' ? 'weeks' : 'months') + ' (including this one):';
+            }
+        },
+        showChoiceModal: function (title, text, choices) {
+            document.getElementById('choice-title').textContent = title;
+            document.getElementById('choice-text').textContent = text;
+            var container = document.getElementById('choice-buttons');
+            if (!container) return;
+            container.innerHTML = '';
+            choices.forEach(function (c) {
+                var btn = document.createElement('button');
+                btn.className = 'btn-primary';
+                btn.style.height = '48px';
+                btn.style.borderRadius = '12px';
+                btn.style.fontWeight = '700';
+                if (c.secondary) {
+                    btn.style.background = 'white';
+                    btn.style.color = 'var(--primary)';
+                    btn.style.border = '2px solid var(--primary)';
+                }
+                if (c.danger) {
+                    btn.style.background = '#ff4444';
+                    btn.style.border = 'none';
+                    btn.style.color = 'white';
+                }
+                btn.textContent = c.label;
+                btn.onclick = function () {
+                    c.action();
+                };
+                container.appendChild(btn);
+            });
+            this.openModal('choice');
         }
     },
 
@@ -830,21 +1106,69 @@ var app = {
         var formStore = document.getElementById('form-store');
         if (formStore) formStore.onsubmit = function (e) {
             e.preventDefault(); var fd = new FormData(e.target);
-            var newId = 's' + Date.now();
-            app.state.storeTypes.push({ id: newId, name: fd.get('name') });
-            app.state.selectedStoreId = newId;
+            var id = fd.get('id');
+            var name = fd.get('name');
+            if (id) {
+                for (var i = 0; i < app.state.storeTypes.length; i++) {
+                    if (app.state.storeTypes[i].id === id) app.state.storeTypes[i].name = name;
+                }
+            } else {
+                var newId = 's' + Date.now();
+                app.state.storeTypes.push({ id: newId, name: name });
+                app.state.selectedStoreId = newId;
+            }
             app.saveData(); app.ui.closeModals(); app.render(); e.target.reset();
         };
         var formAppt = document.getElementById('form-appointment');
-        if (formAppt) formAppt.onsubmit = function (e) {
-            e.preventDefault(); var fd = new FormData(e.target);
-            var id = fd.get('id');
-            var apptData = { id: id || ('a' + Date.now()), title: fd.get('title'), date: fd.get('date'), time: fd.get('time'), memberId: fd.get('memberId'), comment: fd.get('comment') };
-            if (id) {
-                for (var i = 0; i < app.state.appointments.length; i++) { if (app.state.appointments[i].id === id) app.state.appointments[i] = apptData; }
-            } else { app.state.appointments.push(apptData); }
-            app.saveData(); app.ui.closeModals(); app.render(); e.target.reset();
-        };
+        if (formAppt) {
+            // Recurrence Buttons
+            var rBtns = document.querySelectorAll('#repeat-freq-btns .group-btn');
+            rBtns.forEach(function (btn) {
+                btn.onclick = function () {
+                    rBtns.forEach(function (b) { b.classList.remove('active'); });
+                    this.classList.add('active');
+                    var val = this.getAttribute('data-val');
+                    var isCustom = (val === 'custom');
+                    if (!isCustom) formAppt.querySelector('[name=repeatFrequency]').value = val;
+                    document.getElementById('repeat-frequency-input').style.display = isCustom ? 'block' : 'none';
+                };
+            });
+            document.getElementById('btn-delete-appt').onclick = function () {
+                var apptId = formAppt.querySelector('[name=id]').value;
+                if (apptId) {
+                    app.handlers.deleteAppointment(apptId);
+                } else {
+                    app.ui.closeModals();
+                }
+            };
+            formAppt.onsubmit = function (e) {
+                e.preventDefault(); var fd = new FormData(e.target);
+                var id = fd.get('id');
+
+                var oldApt = null;
+                if (id) {
+                    for (var i = 0; i < app.state.appointments.length; i++) {
+                        if (app.state.appointments[i].id === id) { oldApt = app.state.appointments[i]; break; }
+                    }
+                }
+
+                var apptData = {
+                    id: id || ('a' + Date.now() + Math.floor(Math.random() * 1000)),
+                    title: fd.get('title'),
+                    date: fd.get('date'),
+                    time: fd.get('time'),
+                    memberId: fd.get('memberId'),
+                    comment: fd.get('comment'),
+                    repeatType: fd.get('repeatType'),
+                    repeatFrequency: parseInt(fd.get('repeatFrequency')) || 1,
+                    exceptions: oldApt ? (oldApt.exceptions || []) : []
+                };
+                if (id) {
+                    for (var i = 0; i < app.state.appointments.length; i++) { if (app.state.appointments[i].id === id) app.state.appointments[i] = apptData; }
+                } else { app.state.appointments.push(apptData); }
+                app.saveData(); app.ui.closeModals(); app.render(); e.target.reset();
+            };
+        }
         var formHead = document.getElementById('form-heading');
         if (formHead) formHead.onsubmit = function (e) {
             e.preventDefault();
