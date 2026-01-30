@@ -1,0 +1,8 @@
+# Don't commit these files
+node_modules/
+.DS_Store
+*.log
+.env
+.vscode/
+fix_app.js
+mcp.json

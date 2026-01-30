@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Family Calendar</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="style.css">
+    <link rel="manifest" href="manifest.json">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
+    <meta name="theme-color" content="#002c3a">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+</head>
+
+<body>
+    <div class="app-background"></div>
+    <div class="app-container">
+        <div id="sidebar-overlay" class="sidebar-overlay" onclick="app.ui.toggleSidebar(false)"></div>
+        <aside class="sidebar" id="sidebar">
+            <div class="brand"
+                style="display: flex; align-items: center; gap: 12px; padding: 0 10px; margin-bottom: 25px; color: white;">
+                <i class="fa-solid fa-calendar-check" style="font-size: 1.2rem; opacity: 0.9;"></i>
+                <h1 style="font-size: 1rem; font-weight: 700; letter-spacing: -0.5px;">Family Plan</h1>
+            </div>
+            <div class="sidebar-header">
+                <h2 id="sidebar-title">Members</h2>
+                <button class="icon-btn" id="sidebar-add-btn" onclick="app.handlers.onAddSidebarItem()">
+                    <i class="fa-solid fa-plus"></i>
+                </button>
+            </div>
+            <div id="sidebar-list" class="sidebar-list"></div>
+        </aside>
+        <div class="content-wrapper">
+            <header class="header">
+                <div id="header-left" style="display:flex; align-items:center; gap:8px;">
+                    <button id="menu-toggle" class="icon-btn" onclick="app.ui.toggleSidebar(true)">
+                        <i class="fa-solid fa-bars"></i>
+                    </button>
+                    <button class="icon-btn-dark" onclick="app.handlers.onSettings()" title="Calendar Settings">
+                        <i class="fa-solid fa-gear"></i>
+                    </button>
+                    <button class="icon-btn-dark" onclick="app.auth.logout()" title="Logout">
+                        <i class="fa-solid fa-right-from-bracket"></i>
+                    </button>
+                </div>
+
+                <nav class="main-nav">
+                    <button id="nav-calendar" class="nav-btn active" onclick="app.switchView('calendar')">
+                        <i class="fa-solid fa-calendar-days"></i> Calendar
+                    </button>
+                    <button id="nav-shopping" class="nav-btn" onclick="app.switchView('shopping')">
+                        <i class="fa-solid fa-list-check"></i> Lists
+                    </button>
+                </nav>
+
+                <div class="header-right" style="display:flex; gap:8px; align-items:center; margin-left: auto;">
+                    <button id="btn-undo" class="icon-btn-dark" onclick="app.handlers.undo()" title="Undo Last Change"
+                        style="background: var(--accent); color: white; display: none;">
+                        <i class="fa-solid fa-rotate-left"></i>
+                    </button>
+                    <button class="icon-btn-primary" onclick="app.handlers.onAddSidebarItem()" title="Add New">
+                        <i class="fa-solid fa-plus"></i>
+                    </button>
+                </div>
+            </header>
+            <main class="main-view" id="main-view">
+                <div style="padding: 100px 20px; text-align: center; opacity: 0.5;">
+                    <i class="fa-solid fa-spinner fa-spin" style="font-size: 2rem; margin-bottom: 10px;"></i>
+                    <p>Loading Your Calendar...</p>
+                </div>
+            </main>
+        </div>
+    </div>
+    <div id="modal-overlay" class="modal-overlay hidden">
+        <div id="modal-member" class="modal hidden">
+            <h3 id="member-modal-title">New Family Member</h3>
+            <form id="form-member">
+                <input type="hidden" name="id">
+                <div class="form-group"><label>Name</label><input type="text" name="name" required></div>
+                <div class="form-group"><label>Color</label><input type="color" name="color" value="#002c3a"></div>
+                <div class="form-actions" style="display:flex; align-items:center; gap:12px;">
+                    <button type="button" class="icon-btn-ghost" onclick="app.ui.closeModals()"><i
+                            class="fa-solid fa-xmark"></i></button>
+                    <button type="submit" class="icon-btn-primary"><i class="fa-solid fa-check"></i></button>
+                    <button type="button" id="btn-delete-member" class="icon-btn danger"
+                        style="display:none; margin-left: auto;" onclick="app.handlers.deleteMemberConfirm()"><i
+                            class="fa-solid fa-trash-can"></i></button>
+                </div>
+            </form>
+        </div>
+        <div id="modal-store" class="modal hidden">
+            <h3 id="store-modal-title">New List</h3>
+            <form id="form-store">
+                <input type="hidden" name="id">
+                <div class="form-group">
+                    <label>List Name</label>
+                    <input type="text" name="name" required placeholder="e.g. Shopping, To-Do">
+                </div>
+                <div class="form-actions" style="display:flex; align-items:center; gap:12px;">
+                    <button type="button" class="icon-btn-ghost" onclick="app.ui.closeModals()"><i
+                            class="fa-solid fa-xmark"></i></button>
+                    <button type="submit" class="icon-btn-primary"><i class="fa-solid fa-check"></i></button>
+                    <button type="button" id="btn-delete-store" class="icon-btn danger"
+                        style="display:none; margin-left: auto;" onclick="app.handlers.deleteStoreAction()"><i
+                            class="fa-solid fa-trash-can"></i></button>
+                </div>
+            </form>
+        </div>
+        <div id="modal-appointment" class="modal hidden">
+            <h3>Appointment</h3>
+            <form id="form-appointment">
+                <input type="hidden" name="id">
+                <input type="hidden" name="occurrenceDate">
+                <div class="form-group"><label>Title</label><input type="text" name="title" required></div>
+                <div class="form-group"><label>Member</label><select name="memberId" id="appt-member-select"></select>
+                </div>
+                <div class="form-row">
+                    <div class="form-group"><label>Date</label><input type="date" name="date" required></div>
+                    <div class="form-group"><label>Time</label><input type="time" name="time" required></div>
+                </div>
+                <div class="form-group"><label>Note</label><textarea name="comment" rows="2"
+                        placeholder="Notes..."></textarea></div>
+
+                <div style="background: #f8f9fa; padding: 12px; border-radius: 12px; margin-bottom: 20px;">
+                    <div class="form-group" style="margin-bottom: 8px;">
+                        <label style="font-size: 0.75rem;">Repeat</label>
+                        <select name="repeatType" onchange="app.ui.toggleRepeatUI(this.value)">
+                            <option value="none">None</option>
+                            <option value="weekly">Weekly</option>
+                            <option value="monthly">Monthly</option>
+                        </select>
+                    </div>
+
+                    <div id="repeat-freq-wrap" style="display:none; margin-top: 8px;">
+                        <label id="repeat-duration-label"
+                            style="font-size: 0.7rem; color: #666; margin-bottom: 4px; display: block;">Total
+                            weeks</label>
+                        <div class="button-group" id="repeat-freq-btns">
+                            <button type="button" class="group-btn active" data-val="1">1</button>
+                            <button type="button" class="group-btn" data-val="2">2</button>
+                            <button type="button" class="group-btn" data-val="3">3</button>
+                            <button type="button" class="group-btn" data-val="4">4</button>
+                            <button type="button" class="group-btn" data-val="custom" title="Custom"><i
+                                    class="fa-solid fa-circle-chevron-down"></i></button>
+                        </div>
+                        <input type="number" id="repeat-frequency-input" name="repeatFrequency" value="1" min="1"
+                            max="52" style="display:none; margin-top:8px;">
+                    </div>
+                </div>
+                <div class="form-actions" style="display:flex; align-items:center; gap:12px;">
+                    <button type="button" class="icon-btn-ghost" onclick="app.ui.closeModals()"><i
+                            class="fa-solid fa-xmark"></i></button>
+                    <button type="submit" class="icon-btn-primary"><i class="fa-solid fa-check"></i></button>
+                    <button type="button" id="btn-delete-appt" class="icon-btn danger"
+                        style="display:none; margin-left: auto;" onclick="app.handlers.deleteAppointment()"><i
+                            class="fa-solid fa-trash-can"></i></button>
+                </div>
+            </form>
+        </div>
+        <div id="modal-login" class="modal hidden">
+            <h2 style="text-align:center; margin-bottom:20px;">Welcome Back</h2>
+            <div style="display:flex; flex-direction:column; gap:12px; margin-bottom: 20px;">
+                <button type="button" class="btn-text" style="background:#4285F4; color:white; border:none;"
+                    onclick="app.auth.signIn('google')">
+                    <i class="fa-brands fa-google" style="margin-right:8px;"></i> Continue with Google
+                </button>
+                <button type="button" class="btn-text" style="background:#000; color:white; border:none;"
+                    onclick="app.auth.signIn('apple')">
+                    <i class="fa-brands fa-apple" style="margin-right:8px;"></i> Continue with Apple
+                </button>
+                <button type="button" class="btn-text" style="background:#2F2F2F; color:white; border:none;"
+                    onclick="app.auth.signIn('azure')">
+                    <i class="fa-brands fa-microsoft" style="margin-right:8px;"></i> Continue with Microsoft
+                </button>
+            </div>
+            <div id="email-auth-section"
+                style="text-align:center; padding-top: 20px; border-top: 1px solid #eee; margin-top:20px;">
+                <p id="auth-mode-title" style="font-size: 0.9rem; margin-bottom: 15px; color: #666;">Sign in with your
+                    password:</p>
+                <div style="display:flex; flex-direction:column; gap:10px;">
+                    <input type="email" id="login-email" placeholder="Email" style="width:100%; box-sizing:border-box;">
+                    <input type="password" id="login-password" placeholder="Password"
+                        style="width:100%; box-sizing:border-box;">
+
+                    <button type="button" id="btn-login-submit" class="btn-primary"
+                        onclick="app.auth.handlePasswordAuth()"
+                        style="height:48px; border-radius:12px; font-weight:700;">
+                        Sign In
+                    </button>
+
+                    <button type="button" id="toggle-auth-mode" class="btn-text" onclick="app.auth.toggleMode()"
+                        style="font-size: 0.8rem; color: var(--primary);">
+                        Don't have an account? Sign Up
+                    </button>
+
+                    <p id="login-msg" style="font-size: 0.75rem; color: #f44336; display:none;"></p>
+                </div>
+            </div>
+            <div style="text-align:center; font-size:0.8rem; opacity:0.6; margin-top: 20px;">
+                <p>Use your family account to sync data across devices.</p>
+            </div>
+        </div>
+        <div id="modal-heading" class="modal hidden">
+            <h3>New Heading</h3>
+            <form id="form-heading">
+                <div class="form-group">
+                    <label>Heading Name</label>
+                    <input type="text" name="name" required placeholder="e.g. Dairy, Vegetables">
+                </div>
+                <div class="form-actions" style="display:flex; align-items:center; gap:12px;">
+                    <button type="button" class="icon-btn-ghost" onclick="app.ui.closeModals()"><i
+                            class="fa-solid fa-xmark"></i></button>
+                    <button type="submit" class="icon-btn-primary"><i class="fa-solid fa-check"></i></button>
+                </div>
+            </form>
+        </div>
+        <div id="modal-settings" class="modal hidden">
+            <h3>Calendar Settings</h3>
+            <form id="form-settings">
+                <div style="background:#f9f9f9; padding:15px; border-radius:12px; margin-bottom:20px;">
+                    <p style="font-size:0.75rem; font-weight:700; color:#666; margin-bottom:5px;">FAMILY INVITE CODE</p>
+                    <div style="display:flex; align-items:center; justify-content:space-between;">
+                        <span id="family-invite-code"
+                            style="font-family:monospace; font-size:1.2rem; font-weight:700; color:var(--primary); letter-spacing:2px;">------</span>
+                        <button type="button" class="btn-text"
+                            onclick="navigator.clipboard.writeText(document.getElementById('family-invite-code').textContent); alert('Code copied!')"
+                            style="font-size:0.7rem;">Copy</button>
+                    </div>
+                    <p style="font-size:0.7rem; opacity:0.6; margin-top:5px;">Share this code with your family members
+                        so they can join this calendar.</p>
+                </div>
+                <div class="form-row">
+                    <div class="form-group"><label>Start Hour (0-23)</label><input type="number" name="startHour"
+                            min="0" max="23"></div>
+                    <div class="form-group"><label>End Hour (0-23)</label><input type="number" name="endHour" min="0"
+                            max="23"></div>
+                </div>
+                <div class="form-actions" style="display:flex; align-items:center; gap:12px;">
+                    <button type="button" class="icon-btn-ghost" onclick="app.ui.closeModals()"><i
+                            class="fa-solid fa-xmark"></i></button>
+                    <button type="submit" class="icon-btn-primary"><i class="fa-solid fa-check"></i></button>
+                </div>
+            </form>
+        </div>
+        <div id="modal-choice" class="modal hidden">
+            <h3 id="choice-title" style="text-align:center;">Action</h3>
+            <p id="choice-text" style="margin-bottom:20px; font-size:1rem; opacity:0.8; text-align:center;"></p>
+            <div id="choice-buttons" style="display:flex; flex-direction:column; gap:12px; margin-bottom: 20px;">
+                <!-- Dynamic Buttons -->
+            </div>
+            <div class="form-actions" style="display:flex; align-items:center;">
+                <button type="button" class="icon-btn-ghost" onclick="app.ui.closeModals()"><i
+                        class="fa-solid fa-xmark"></i></button>
+            </div>
+        </div>
+    </div>
+    </div>
+    <div style="position:fixed; bottom:5px; right:5px; font-size:10px; opacity:0.3; pointer-events:none;">v7.5
+        Drag & Drop Reordering</div>
+    <script src="app.js?v=33"></script>
+</body>
+
+</html>
