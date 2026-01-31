@@ -144,6 +144,12 @@ var app = {
                     },
                     (payload) => {
                         console.log('🔄 Grocery items changed:', payload);
+                        // Don't reload if user is actively typing
+                        const activeElement = document.activeElement;
+                        if (activeElement && (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA')) {
+                            console.log('⏸️ Skipping reload - user is typing');
+                            return;
+                        }
                         app.api.loadAllData(familyId, true); // Skip realtime setup on reload
                     }
                 )
@@ -156,6 +162,11 @@ var app = {
                     },
                     (payload) => {
                         console.log('🔄 Appointments changed:', payload);
+                        const activeElement = document.activeElement;
+                        if (activeElement && (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA')) {
+                            console.log('⏸️ Skipping reload - user is typing');
+                            return;
+                        }
                         app.api.loadAllData(familyId, true); // Skip realtime setup on reload
                     }
                 )
@@ -168,6 +179,11 @@ var app = {
                     },
                     (payload) => {
                         console.log('🔄 Members changed:', payload);
+                        const activeElement = document.activeElement;
+                        if (activeElement && (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA')) {
+                            console.log('⏸️ Skipping reload - user is typing');
+                            return;
+                        }
                         app.api.loadAllData(familyId, true); // Skip realtime setup on reload
                     }
                 )
@@ -180,6 +196,11 @@ var app = {
                     },
                     (payload) => {
                         console.log('🔄 Stores changed:', payload);
+                        const activeElement = document.activeElement;
+                        if (activeElement && (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA')) {
+                            console.log('⏸️ Skipping reload - user is typing');
+                            return;
+                        }
                         app.api.loadAllData(familyId, true); // Skip realtime setup on reload
                     }
                 )
