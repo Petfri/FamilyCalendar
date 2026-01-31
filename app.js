@@ -61,7 +61,7 @@ var app = {
             return { status: 'linked', member };
         },
 
-        async loadAllData(familyId) {
+        async loadAllData(familyId, skipRealtime = false) {
             try {
                 const [members, appts, stores, items, family] = await Promise.all([
                     supabaseClient.from('family_members').select('*').eq('family_id', familyId).order('position', { ascending: true }),
@@ -108,8 +108,10 @@ var app = {
                 }
                 app.render();
 
-                // Setup realtime subscriptions after initial data load
-                app.api.setupRealtime(familyId);
+                // Setup realtime subscriptions after initial data load (skip if called from realtime event)
+                if (!skipRealtime) {
+                    app.api.setupRealtime(familyId);
+                }
             } catch (err) {
                 console.error("Load All Data Fatal Error:", err);
                 alert("Failed to load data: " + err.message);
@@ -142,7 +144,7 @@ var app = {
                     },
                     (payload) => {
                         console.log('🔄 Grocery items changed:', payload);
-                        app.api.loadAllData(familyId);
+                        app.api.loadAllData(familyId, true); // Skip realtime setup on reload
                     }
                 )
                 .on('postgres_changes',
@@ -154,7 +156,7 @@ var app = {
                     },
                     (payload) => {
                         console.log('🔄 Appointments changed:', payload);
-                        app.api.loadAllData(familyId);
+                        app.api.loadAllData(familyId, true); // Skip realtime setup on reload
                     }
                 )
                 .on('postgres_changes',
@@ -166,7 +168,7 @@ var app = {
                     },
                     (payload) => {
                         console.log('🔄 Members changed:', payload);
-                        app.api.loadAllData(familyId);
+                        app.api.loadAllData(familyId, true); // Skip realtime setup on reload
                     }
                 )
                 .on('postgres_changes',
@@ -178,7 +180,7 @@ var app = {
                     },
                     (payload) => {
                         console.log('🔄 Stores changed:', payload);
-                        app.api.loadAllData(familyId);
+                        app.api.loadAllData(familyId, true); // Skip realtime setup on reload
                     }
                 )
                 .subscribe((status) => {
@@ -189,7 +191,7 @@ var app = {
                         // Fallback to polling
                         app.pollingInterval = setInterval(function () {
                             console.log('🔄 Polling for updates...');
-                            app.api.loadAllData(familyId);
+                            app.api.loadAllData(familyId, true); // Skip realtime setup on poll
                         }, 10000);
                     }
                 });
