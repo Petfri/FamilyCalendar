@@ -1614,10 +1614,59 @@ var app = {
             app.renderShoppingListItems();
         },
         onDragStart: function (e, appt, occurrenceDate) {
-            // Simplified drag
+            // Store the appointment being dragged
+            app.state.draggingAppt = appt;
+            app.state.draggingOccurrenceDate = occurrenceDate;
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('text/html', e.target.innerHTML);
         },
         onDrop: function (e, date, hour) {
-            // Simplified drop
+            e.preventDefault();
+            if (!app.state.draggingAppt) return;
+
+            var appt = app.state.draggingAppt;
+            var occurrenceDate = app.state.draggingOccurrenceDate;
+
+            // Format the new date
+            var newDate = new Date(date);
+            newDate.setHours(0, 0, 0, 0);
+            var newDateStr = newDate.toISOString().split('T')[0];
+
+            // Format the new time
+            var newTime = hour + ':00';
+
+            // If it's a repeating appointment, add an exception for the old occurrence
+            if (appt.repeatType && appt.repeatType !== 'none') {
+                var oldDateStr = new Date(occurrenceDate).toISOString().split('T')[0];
+                var exceptions = appt.exceptions || [];
+                if (exceptions.indexOf(oldDateStr) === -1) {
+                    exceptions.push(oldDateStr);
+                }
+
+                // Create a new one-time appointment for the new date/time
+                app.api.addAppointment({
+                    memberId: appt.memberId,
+                    title: appt.title,
+                    date: newDateStr,
+                    time: newTime,
+                    comment: appt.comment,
+                    repeatType: 'none',
+                    repeatFrequency: 1
+                });
+
+                // Update the original to add the exception
+                app.api.updateAppointment(appt.id, { exceptions: exceptions });
+            } else {
+                // Simple move for non-repeating appointments
+                app.api.updateAppointment(appt.id, {
+                    date: newDateStr,
+                    time: newTime
+                });
+            }
+
+            // Clear drag state
+            app.state.draggingAppt = null;
+            app.state.draggingOccurrenceDate = null;
         },
         isMatchingAppointment: function (appt, cellDate, hObj, sH, eH) {
             // Keep existing logic
