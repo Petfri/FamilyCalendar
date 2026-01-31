@@ -999,6 +999,7 @@ var app = {
 
         input.placeholder = selectedHeaderName ? 'Add to ' + selectedHeaderName + '...' : 'Add something...';
         input.style.flex = '1';
+        input.autocomplete = 'off';  // Prevent password autofill
         input.onkeydown = function (e) {
             if (e.key === 'Enter') {
                 e.preventDefault();
