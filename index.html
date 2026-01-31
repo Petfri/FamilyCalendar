@@ -259,6 +259,50 @@
                         class="fa-solid fa-xmark"></i></button>
             </div>
         </div>
+        <div id="modal-family-setup" class="modal hidden">
+            <h3>Welcome! Let's Get Started</h3>
+            <p style="margin-bottom: 20px; opacity: 0.8;">Create a new family or join an existing one.</p>
+            <div style="display: flex; flex-direction: column; gap: 16px;">
+                <button type="button" class="btn-primary" onclick="app.handlers.showCreateFamily()"
+                    style="padding: 16px; font-size: 1rem; border-radius: 12px; background: var(--primary); color: white; border: none; cursor: pointer; font-weight: 600;">
+                    <i class="fa-solid fa-plus" style="margin-right: 8px;"></i> Create New Family
+                </button>
+                <button type="button" class="btn-secondary" onclick="app.handlers.showJoinFamily()"
+                    style="padding: 16px; font-size: 1rem; border-radius: 12px; background: white; color: var(--primary); border: 2px solid var(--primary); cursor: pointer; font-weight: 600;">
+                    <i class="fa-solid fa-users" style="margin-right: 8px;"></i> Join Existing Family
+                </button>
+            </div>
+        </div>
+        <div id="modal-create-family" class="modal hidden">
+            <h3>Create New Family</h3>
+            <form id="form-create-family">
+                <div class="form-group"><label>Family Name</label><input type="text" name="familyName" required
+                        placeholder="e.g., The Smiths"></div>
+                <div class="form-group"><label>Your Name</label><input type="text" name="memberName" required
+                        placeholder="Your name"></div>
+                <div class="form-group"><label>Your Color</label><input type="color" name="color" value="#002c3a"></div>
+                <div class="form-actions" style="display:flex; align-items:center; gap:12px;">
+                    <button type="button" class="icon-btn-ghost" onclick="app.handlers.backToFamilySetup()"><i
+                            class="fa-solid fa-arrow-left"></i></button>
+                    <button type="submit" class="icon-btn-primary"><i class="fa-solid fa-check"></i></button>
+                </div>
+            </form>
+        </div>
+        <div id="modal-join-family" class="modal hidden">
+            <h3>Join Family</h3>
+            <form id="form-join-family">
+                <div class="form-group"><label>Family Invite Code</label><input type="text" name="inviteCode" required
+                        placeholder="Enter 6-character code" maxlength="6" style="text-transform: uppercase;"></div>
+                <div class="form-group"><label>Your Name</label><input type="text" name="memberName" required
+                        placeholder="Your name"></div>
+                <div class="form-group"><label>Your Color</label><input type="color" name="color" value="#002c3a"></div>
+                <div class="form-actions" style="display:flex; align-items:center; gap:12px;">
+                    <button type="button" class="icon-btn-ghost" onclick="app.handlers.backToFamilySetup()"><i
+                            class="fa-solid fa-arrow-left"></i></button>
+                    <button type="submit" class="icon-btn-primary"><i class="fa-solid fa-check"></i></button>
+                </div>
+            </form>
+        </div>
     </div>
     </div>
     <div style="position:fixed; bottom:5px; right:5px; font-size:10px; opacity:0.3; pointer-events:none;">v8.0

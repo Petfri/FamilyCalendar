@@ -218,25 +218,95 @@ var app = {
             }
         },
 
-        async joinFamilyWithCode(code) {
+        async createFamilyAndMember(familyName, memberName, color) {
+            if (!familyName || !memberName) return;
+
+            const { data: { user } } = await supabaseClient.auth.getUser();
+            if (!user) {
+                alert('You must be logged in to create a family.');
+                return;
+            }
+
+            const code = Math.random().toString(36).substring(2, 8).toUpperCase();
+            const { data: family, error: familyError } = await supabaseClient.from('families').insert({
+                name: familyName,
+                invite_code: code
+            }).select().single();
+
+            if (familyError) {
+                console.error("Create Family Error:", familyError);
+                alert("Failed to create family: " + familyError.message);
+                return;
+            }
+
+            // Create member for this user
+            const { data: member, error: memberError } = await supabaseClient.from('family_members').insert({
+                family_id: family.id,
+                user_id: user.id,
+                name: memberName,
+                color: color,
+                position: 0
+            }).select().single();
+
+            if (memberError) {
+                console.error("Create Member Error:", memberError);
+                alert("Failed to create member: " + memberError.message);
+                return;
+            }
+
+            app.state.familyId = family.id;
+            app.state.family = family;
+            app.state.currentUser = member;
+            app.state.selectedMemberId = member.id;
+
+            await app.api.loadAllData(family.id);
+        },
+
+        async joinFamilyWithCode(code, memberName, color) {
+            if (!code || !memberName) return;
+
+            const { data: { user } } = await supabaseClient.auth.getUser();
+            if (!user) {
+                alert('You must be logged in to join a family.');
+                return;
+            }
+
             const { data: family } = await supabaseClient.from('families').select('*').eq('invite_code', code.toUpperCase()).single();
             if (!family) {
                 alert("Invalid invite code. Please check and try again.");
                 return;
             }
 
-            // Now show the claim/create screen for THIS specific family
-            let { data: unlinked } = await supabaseClient.from('family_members')
-                .select('*')
+            // Get the highest position for ordering
+            const { data: existingMembers } = await supabaseClient.from('family_members')
+                .select('position')
                 .eq('family_id', family.id)
-                .is('user_id', null);
+                .order('position', { ascending: false })
+                .limit(1);
+
+            const nextPosition = existingMembers && existingMembers.length > 0 ? existingMembers[0].position + 1 : 0;
+
+            // Create member for this user
+            const { data: member, error: memberError } = await supabaseClient.from('family_members').insert({
+                family_id: family.id,
+                user_id: user.id,
+                name: memberName,
+                color: color,
+                position: nextPosition
+            }).select().single();
+
+            if (memberError) {
+                console.error("Join Family Error:", memberError);
+                alert("Failed to join family: " + memberError.message);
+                return;
+            }
 
             app.state.familyId = family.id;
-            if (unlinked && unlinked.length > 0) {
-                app.auth.showClaimProfile(unlinked);
-            } else {
-                app.auth.showCreateProfile();
-            }
+            app.state.family = family;
+            app.state.currentUser = member;
+            app.state.selectedMemberId = member.id;
+
+            await app.api.loadAllData(family.id);
         },
 
         async claimProfile(memberId) {
@@ -508,7 +578,7 @@ var app = {
                     await this.api.loadAllData(app.state.familyId);
                     this.initRealtime();
                 } else if (res && res.status === 'unaffiliated') {
-                    this.auth.showJoinMenu();
+                    this.handlers.showFamilySetup();
                 } else if (res && res.status === 'claim_needed') {
                     this.auth.showClaimProfile(res.unlinked);
                 }
@@ -1561,6 +1631,18 @@ var app = {
                 return (monthsDiff < limit);
             }
             return false;
+        },
+        showFamilySetup: function () {
+            app.ui.openModal('family-setup');
+        },
+        showCreateFamily: function () {
+            app.ui.openModal('create-family');
+        },
+        showJoinFamily: function () {
+            app.ui.openModal('join-family');
+        },
+        backToFamilySetup: function () {
+            app.ui.openModal('family-setup');
         }
     },
 
@@ -1760,6 +1842,32 @@ var app = {
             }
 
             app.ui.closeModals(); app.render();
+        };
+
+        const formCreateFamily = document.getElementById('form-create-family');
+        if (formCreateFamily) formCreateFamily.onsubmit = async function (e) {
+            e.preventDefault();
+            var fd = new FormData(e.target);
+            var familyName = fd.get('familyName');
+            var memberName = fd.get('memberName');
+            var color = fd.get('color');
+
+            await app.api.createFamilyAndMember(familyName, memberName, color);
+            app.ui.closeModals();
+            e.target.reset();
+        };
+
+        const formJoinFamily = document.getElementById('form-join-family');
+        if (formJoinFamily) formJoinFamily.onsubmit = async function (e) {
+            e.preventDefault();
+            var fd = new FormData(e.target);
+            var inviteCode = fd.get('inviteCode').toUpperCase();
+            var memberName = fd.get('memberName');
+            var color = fd.get('color');
+
+            await app.api.joinFamilyWithCode(inviteCode, memberName, color);
+            app.ui.closeModals();
+            e.target.reset();
         };
     }
 };
