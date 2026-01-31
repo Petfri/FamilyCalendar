@@ -1614,6 +1614,7 @@ var app = {
             app.renderShoppingListItems();
         },
         onDragStart: function (e, appt, occurrenceDate) {
+            console.log('🎯 Drag started:', appt.title, 'on', occurrenceDate);
             // Store the appointment being dragged
             app.state.draggingAppt = appt;
             app.state.draggingOccurrenceDate = occurrenceDate;
@@ -1621,8 +1622,12 @@ var app = {
             e.dataTransfer.setData('text/html', e.target.innerHTML);
         },
         onDrop: function (e, date, hour) {
+            console.log('📍 Drop triggered on:', date, 'at hour:', hour);
             e.preventDefault();
-            if (!app.state.draggingAppt) return;
+            if (!app.state.draggingAppt) {
+                console.log('⚠️ No appointment being dragged!');
+                return;
+            }
 
             var appt = app.state.draggingAppt;
             var occurrenceDate = app.state.draggingOccurrenceDate;
@@ -1669,6 +1674,8 @@ var app = {
                     time: newTime
                 });
             }
+
+            console.log('✅ Appointment moved to:', newDateStr, 'at', newTime);
 
             // Clear drag state
             app.state.draggingAppt = null;
