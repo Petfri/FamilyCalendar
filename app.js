@@ -1013,6 +1013,19 @@ var app = {
         };
         inputWrap.appendChild(input);
 
+        // Paste button
+        var pasteBtn = document.createElement('button');
+        pasteBtn.className = 'icon-btn-primary';
+        pasteBtn.style.minHeight = '48px';
+        pasteBtn.style.minWidth = '48px';
+        pasteBtn.style.borderRadius = '14px';
+        pasteBtn.style.boxShadow = '0 4px 12px rgba(0,44,58,0.3)';
+        pasteBtn.style.marginRight = '8px';
+        pasteBtn.title = 'Paste from Clipboard';
+        pasteBtn.innerHTML = '<i class="fa-solid fa-paste"></i>';
+        pasteBtn.onclick = function () { app.handlers.pasteItems(store.id); };
+        inputWrap.appendChild(pasteBtn);
+
         // Heading button (at the end)
         var headingBtn = document.createElement('button');
         headingBtn.className = 'icon-btn-primary';
@@ -1080,6 +1093,13 @@ var app = {
             if (item.isHeader) {
                 el.innerHTML = '<span class="drag-handle" style="flex:1; margin-left:0; font-weight:800; padding: 5px 0;">' + item.text + '</span>';
 
+                var hEdit = document.createElement('button');
+                hEdit.className = 'delete-btn-blue';
+                hEdit.style.marginRight = '8px';
+                hEdit.innerHTML = '<i class="fa-solid fa-pencil"></i>';
+                hEdit.onclick = function (e) { e.stopPropagation(); app.handlers.editItemText(item.id); };
+                el.appendChild(hEdit);
+
                 var hDel = document.createElement('button');
                 hDel.className = 'delete-btn-blue';
                 hDel.style.marginRight = '8px';
@@ -1108,6 +1128,13 @@ var app = {
             };
 
             if (!item.isHeader) {
+                var edit = document.createElement('button');
+                edit.className = 'delete-btn-blue';
+                edit.style.marginRight = '8px';
+                edit.innerHTML = '<i class="fa-solid fa-pencil"></i>';
+                edit.onclick = function (e) { e.stopPropagation(); app.handlers.editItemText(item.id); };
+                el.appendChild(edit);
+
                 var del = document.createElement('button');
                 del.className = 'delete-btn-blue';
                 del.innerHTML = '<i class="fa-solid fa-xmark"></i>';
@@ -1500,6 +1527,74 @@ var app = {
         deleteItem: function (id) {
             app.api.deleteGroceryItem(id);
         },
+        editItemText: function (id) {
+            var item = app.state.groceryItems.find(i => i.id === id);
+            if (!item) return;
+
+            var newText = prompt(item.isHeader ? 'Edit heading:' : 'Edit item:', item.text);
+            if (newText && newText.trim() && newText !== item.text) {
+                app.api.updateGroceryItem(id, { text: newText.trim() });
+            }
+        },
+        pasteItems: async function (storeId) {
+            try {
+                var text = await navigator.clipboard.readText();
+                if (!text || !text.trim()) {
+                    alert('Clipboard is empty!');
+                    return;
+                }
+
+                // Check if text has multiple lines
+                var lines = text.split('\n').map(l => l.trim()).filter(l => l);
+
+                if (lines.length === 1) {
+                    // Only one line, just add it
+                    app.api.addGroceryItem({
+                        storeId: storeId,
+                        text: lines[0],
+                        checked: false,
+                        isHeader: false
+                    });
+                } else {
+                    // Multiple lines - show choice
+                    app.ui.showChoice(
+                        'Paste Items',
+                        'Found ' + lines.length + ' lines. How do you want to paste?',
+                        [
+                            {
+                                label: 'As One Item',
+                                icon: 'fa-solid fa-file-lines',
+                                action: function () {
+                                    app.api.addGroceryItem({
+                                        storeId: storeId,
+                                        text: text.trim(),
+                                        checked: false,
+                                        isHeader: false
+                                    });
+                                }
+                            },
+                            {
+                                label: 'Split by Lines (' + lines.length + ' items)',
+                                icon: 'fa-solid fa-list',
+                                action: function () {
+                                    lines.forEach(function (line) {
+                                        app.api.addGroceryItem({
+                                            storeId: storeId,
+                                            text: line,
+                                            checked: false,
+                                            isHeader: false
+                                        });
+                                    });
+                                }
+                            }
+                        ]
+                    );
+                }
+            } catch (err) {
+                console.error('Paste error:', err);
+                alert('Could not read clipboard. Please make sure you have granted clipboard permissions.');
+            }
+        },
         deleteAll: function (sid, headId) {
             if (!confirm("Are you sure you want to delete this heading and ALL items inside it?")) return;
 
@@ -1755,6 +1850,52 @@ var app = {
         closeModals: function () {
             if (!app.state.currentUser) return;
             document.getElementById('modal-overlay').classList.add('hidden');
+        },
+        showChoice: function (title, message, buttons) {
+            // Use the existing choice modal
+            document.getElementById('modal-overlay').classList.remove('hidden');
+            var modals = document.querySelectorAll('.modal');
+            for (var i = 0; i < modals.length; i++) { modals[i].classList.add('hidden'); }
+
+            var modal = document.getElementById('modal-choice');
+            if (!modal) return;
+
+            modal.classList.remove('hidden');
+            document.getElementById('choice-title').textContent = title;
+            document.getElementById('choice-text').textContent = message;
+
+            var buttonsContainer = document.getElementById('choice-buttons');
+            buttonsContainer.innerHTML = '';
+
+            buttons.forEach(function (btn) {
+                var button = document.createElement('button');
+                button.className = 'btn-primary';
+                button.style.padding = '16px';
+                button.style.fontSize = '1rem';
+                button.style.borderRadius = '12px';
+                button.style.background = 'var(--primary)';
+                button.style.color = 'white';
+                button.style.border = 'none';
+                button.style.cursor = 'pointer';
+                button.style.fontWeight = '600';
+                button.style.display = 'flex';
+                button.style.alignItems = 'center';
+                button.style.justifyContent = 'center';
+                button.style.gap = '8px';
+
+                if (btn.icon) {
+                    button.innerHTML = '<i class="' + btn.icon + '"></i> ' + btn.label;
+                } else {
+                    button.textContent = btn.label;
+                }
+
+                button.onclick = function () {
+                    btn.action();
+                    app.ui.closeModals();
+                };
+
+                buttonsContainer.appendChild(button);
+            });
         },
         toggleSidebar: function (open) {
             document.getElementById('sidebar').classList.toggle('mobile-open', open);
