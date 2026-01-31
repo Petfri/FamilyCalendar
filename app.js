@@ -1000,6 +1000,11 @@ var app = {
         input.placeholder = selectedHeaderName ? 'Add to ' + selectedHeaderName + '...' : 'Add something...';
         input.style.flex = '1';
         input.autocomplete = 'off';  // Prevent password autofill
+        input.setAttribute('autocomplete', 'off');
+        input.setAttribute('autocorrect', 'off');
+        input.setAttribute('autocapitalize', 'off');
+        input.setAttribute('spellcheck', 'false');
+        input.name = 'shopping-item-' + Date.now();  // Unique name to prevent autofill
         input.onkeydown = function (e) {
             if (e.key === 'Enter') {
                 e.preventDefault();
