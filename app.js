@@ -1627,17 +1627,23 @@ var app = {
             var appt = app.state.draggingAppt;
             var occurrenceDate = app.state.draggingOccurrenceDate;
 
-            // Format the new date
+            // Format the new date (use local timezone, not UTC)
             var newDate = new Date(date);
-            newDate.setHours(0, 0, 0, 0);
-            var newDateStr = newDate.toISOString().split('T')[0];
+            var year = newDate.getFullYear();
+            var month = String(newDate.getMonth() + 1).padStart(2, '0');
+            var day = String(newDate.getDate()).padStart(2, '0');
+            var newDateStr = year + '-' + month + '-' + day;
 
             // Format the new time
             var newTime = hour + ':00';
 
             // If it's a repeating appointment, add an exception for the old occurrence
             if (appt.repeatType && appt.repeatType !== 'none') {
-                var oldDateStr = new Date(occurrenceDate).toISOString().split('T')[0];
+                var oldDate = new Date(occurrenceDate);
+                var oldYear = oldDate.getFullYear();
+                var oldMonth = String(oldDate.getMonth() + 1).padStart(2, '0');
+                var oldDay = String(oldDate.getDate()).padStart(2, '0');
+                var oldDateStr = oldYear + '-' + oldMonth + '-' + oldDay;
                 var exceptions = appt.exceptions || [];
                 if (exceptions.indexOf(oldDateStr) === -1) {
                     exceptions.push(oldDateStr);
