@@ -150,6 +150,12 @@ var app = {
                             console.log('⏸️ Skipping reload - user is typing');
                             return;
                         }
+                        // Also check if shopping input has content (mobile keyboard might cause focus loss)
+                        const shoppingInput = document.getElementById('shopping-input');
+                        if (shoppingInput && shoppingInput.value && shoppingInput.value.trim()) {
+                            console.log('⏸️ Skipping reload - shopping input has content');
+                            return;
+                        }
                         app.api.loadAllData(familyId, true); // Skip realtime setup on reload
                     }
                 )
@@ -1015,12 +1021,17 @@ var app = {
 
         // Paste button
         var pasteBtn = document.createElement('button');
-        pasteBtn.className = 'icon-btn-primary';
         pasteBtn.style.minHeight = '48px';
         pasteBtn.style.minWidth = '48px';
         pasteBtn.style.borderRadius = '14px';
-        pasteBtn.style.boxShadow = '0 4px 12px rgba(0,44,58,0.3)';
+        pasteBtn.style.background = 'white';
+        pasteBtn.style.border = '1px solid #ddd';
+        pasteBtn.style.color = 'var(--primary)';
+        pasteBtn.style.cursor = 'pointer';
         pasteBtn.style.marginRight = '8px';
+        pasteBtn.style.display = 'flex';
+        pasteBtn.style.alignItems = 'center';
+        pasteBtn.style.justifyContent = 'center';
         pasteBtn.title = 'Paste from Clipboard';
         pasteBtn.innerHTML = '<i class="fa-solid fa-paste"></i>';
         pasteBtn.onclick = function () { app.handlers.pasteItems(store.id); };
@@ -1096,7 +1107,7 @@ var app = {
                 var hEdit = document.createElement('button');
                 hEdit.className = 'delete-btn-blue';
                 hEdit.style.marginRight = '8px';
-                hEdit.innerHTML = '<i class="fa-solid fa-pencil"></i>';
+                hEdit.innerHTML = '<i class="fa-solid fa-i-cursor"></i>';
                 hEdit.onclick = function (e) { e.stopPropagation(); app.handlers.editItemText(item.id); };
                 el.appendChild(hEdit);
 
@@ -1131,7 +1142,7 @@ var app = {
                 var edit = document.createElement('button');
                 edit.className = 'delete-btn-blue';
                 edit.style.marginRight = '8px';
-                edit.innerHTML = '<i class="fa-solid fa-pencil"></i>';
+                edit.innerHTML = '<i class="fa-solid fa-i-cursor"></i>';
                 edit.onclick = function (e) { e.stopPropagation(); app.handlers.editItemText(item.id); };
                 el.appendChild(edit);
 
