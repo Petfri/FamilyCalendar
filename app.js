@@ -1178,7 +1178,7 @@ var app = {
             handle.style.opacity = '0.4';
             handle.style.cursor = 'grab';
             handle.style.marginLeft = '10px';
-            handle.innerHTML = '<i class="fa-solid fa-grip-vertical"></i>';
+            handle.innerHTML = '<i class="fa-solid fa-bars"></i>';
             el.appendChild(handle);
 
             if (item.isHeader) {
