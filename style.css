@@ -900,6 +900,12 @@ body {
     min-height: 48px;
 }
 
+.shopping-item span {
+    word-break: break-word;
+    overflow-wrap: break-word;
+    white-space: normal;
+}
+
 .shopping-item.is-header span {
     font-weight: 800;
     font-size: 1.05rem;

@@ -603,6 +603,13 @@ var app = {
         this.setupEventListeners();
         this.setupSwipe();
 
+        // Handle mobile back button for modals
+        window.onpopstate = function () {
+            if (!document.getElementById('modal-overlay').classList.contains('hidden')) {
+                app.ui.closeModals(true); // pass true to avoid double popState
+            }
+        };
+
         // Auth Check
         if (supabaseClient) {
             const { data: { session } } = await supabaseClient.auth.getSession();
@@ -664,6 +671,10 @@ var app = {
         var activeId = document.activeElement ? document.activeElement.id : null;
         var main = document.getElementById('main-view');
         if (!main) return;
+
+        // Save scroll position
+        var scrollPos = main.scrollTop;
+
         main.innerHTML = '';
         this.renderSidebar();
 
@@ -681,6 +692,9 @@ var app = {
                 }
             }
         }
+
+        // Restore scroll position
+        main.scrollTop = scrollPos;
     },
 
     renderSidebar: function () {
@@ -1020,14 +1034,11 @@ var app = {
 
         input.placeholder = selectedHeaderName ? 'Add to ' + selectedHeaderName + '...' : 'Add something...';
         input.style.flex = '1';
-        input.autocomplete = 'off';  // Prevent password autofill
+        input.autocomplete = 'off';
         input.setAttribute('autocomplete', 'off');
-        input.setAttribute('autocorrect', 'off');
-        input.setAttribute('autocapitalize', 'off');
-        input.setAttribute('spellcheck', 'false');
-        input.name = 'shopping-item-' + Date.now();  // Unique name to prevent autofill
+        input.setAttribute('autocapitalize', 'sentences'); // Re-enable for mobile
+        input.name = 'shopping-item-' + Date.now();
         input.oninput = function () {
-            // Track typing time to prevent realtime interruptions
             app.state.lastTypingTime = Date.now();
         };
         input.onkeydown = function (e) {
@@ -1038,15 +1049,15 @@ var app = {
         };
         inputWrap.appendChild(input);
 
-        // Paste button
+        // Paste button (matched to headingBtn)
         var pasteBtn = document.createElement('button');
         pasteBtn.style.minHeight = '48px';
-        pasteBtn.style.minWidth = '56px';
+        pasteBtn.style.minWidth = '48px'; // Same width as heading button
         pasteBtn.style.borderRadius = '14px';
         pasteBtn.style.background = 'white';
-        pasteBtn.style.border = 'none';
-        pasteBtn.style.boxShadow = '0 2px 8px rgba(0,0,0,0.1)';
         pasteBtn.style.color = 'var(--primary)';
+        pasteBtn.style.boxShadow = '0 4px 12px rgba(0,44,58,0.2)'; // Similar shadow strength
+        pasteBtn.style.border = 'none';
         pasteBtn.style.cursor = 'pointer';
         pasteBtn.style.marginRight = '8px';
         pasteBtn.style.display = 'flex';
@@ -1926,6 +1937,9 @@ var app = {
 
     ui: {
         openModal: function (n) {
+            // Push state for back button handling
+            history.pushState({ modal: n }, '');
+
             document.getElementById('modal-overlay').classList.remove('hidden');
             var modals = document.querySelectorAll('.modal');
             for (var i = 0; i < modals.length; i++) { modals[i].classList.add('hidden'); }
@@ -1949,11 +1963,15 @@ var app = {
                 }
             }
         },
-        closeModals: function () {
+        closeModals: function (skipPop) {
             if (!app.state.currentUser) return;
             document.getElementById('modal-overlay').classList.add('hidden');
+            if (!skipPop) history.back();
         },
         showChoice: function (title, message, buttons) {
+            // Push state for back button handling
+            history.pushState({ modal: 'choice' }, '');
+
             // Use the existing choice modal
             document.getElementById('modal-overlay').classList.remove('hidden');
             var modals = document.querySelectorAll('.modal');
