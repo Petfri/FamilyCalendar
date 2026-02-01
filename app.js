@@ -2172,7 +2172,7 @@ var app = {
         };
     }
 
-    const formEditItem = document.getElementById('form-edit-item');
+    var formEditItem = document.getElementById('form-edit-item');
     if(formEditItem) formEditItem.onsubmit = function (e) {
         e.preventDefault();
         var fd = new FormData(e.target);
