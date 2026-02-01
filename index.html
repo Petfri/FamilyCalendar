@@ -303,11 +303,36 @@
                 </div>
             </form>
         </div>
+        <div id="modal-edit-item" class="modal hidden">
+            <h3 id="edit-item-title">Edit Item</h3>
+            <form id="form-edit-item">
+                <div class="form-group">
+                    <label>Text</label>
+                    <input type="text" id="edit-item-text" name="text" required>
+                </div>
+                <div id="edit-item-options"
+                    style="display: none; margin-top: 16px; padding-top: 16px; border-top: 1px solid #eee;">
+                    <button type="button" class="btn-secondary" onclick="app.handlers.deleteAllItems()"
+                        style="width: 100%; margin-bottom: 8px;">
+                        <i class="fa-solid fa-trash"></i> Delete All Items
+                    </button>
+                    <button type="button" class="btn-secondary" onclick="app.handlers.deleteClearedItems()"
+                        style="width: 100%;">
+                        <i class="fa-solid fa-check"></i> Delete Cleared Items
+                    </button>
+                </div>
+                <div class="form-actions" style="margin-top: 16px;">
+                    <button type="button" class="icon-btn-ghost" onclick="app.ui.closeModals()"><i
+                            class="fa-solid fa-xmark"></i></button>
+                    <button type="submit" class="icon-btn-primary"><i class="fa-solid fa-check"></i></button>
+                </div>
+            </form>
+        </div>
     </div>
     </div>
-    <div style="position:fixed; bottom:5px; right:5px; font-size:10px; opacity:0.3; pointer-events:none;">v8.2
-        Edit & Paste</div>
-    <script src="app.js?v=46"></script>
+    <div style="position:fixed; bottom:5px; right:5px; font-size:10px; opacity:0.3; pointer-events:none;">v8.3
+        Edit Modal</div>
+    <script src="app.js?v=47"></script>
 </body>
 
 </html>

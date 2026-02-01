@@ -41,7 +41,8 @@ var app = {
         dropTarget: null,
         expandedDayIndex: null,
         familyId: null,
-        lastTypingTime: 0
+        lastTypingTime: 0,
+        editingItemId: null
     },
 
     api: {
@@ -1121,23 +1122,9 @@ var app = {
 
                 var hEdit = document.createElement('button');
                 hEdit.className = 'delete-btn-blue';
-                hEdit.style.marginRight = '8px';
-                hEdit.innerHTML = '<i class="fa-solid fa-pen" style="font-size: 0.75rem;"></i>';
+                hEdit.innerHTML = '<i class="fa-solid fa-ellipsis"></i>';
                 hEdit.onclick = function (e) { e.stopPropagation(); app.handlers.editItemText(item.id); };
                 el.appendChild(hEdit);
-
-                var hDel = document.createElement('button');
-                hDel.className = 'delete-btn-blue';
-                hDel.style.marginRight = '8px';
-                hDel.innerHTML = '<i class="fa-solid fa-xmark"></i>';
-                hDel.onclick = function (e) { e.stopPropagation(); app.handlers.deleteAll(sid, item.id); };
-                el.appendChild(hDel);
-
-                var hOpt = document.createElement('button');
-                hOpt.className = 'delete-btn-blue';
-                hOpt.innerHTML = '<i class="fa-solid fa-ellipsis-vertical"></i>';
-                hOpt.onclick = function (e) { e.stopPropagation(); app.handlers.showShoppingMenu(e, sid, item.id); };
-                el.appendChild(hOpt);
             } else {
                 var check = '<div class="check-circle' + (item.checked ? ' checked' : '') + '"></div>';
                 el.innerHTML = check + '<span class="drag-handle" style="flex:1; margin-left:15px; padding: 5px 0; ' + (item.checked ? 'text-decoration:line-through; opacity:0.5;' : '') + '">' + item.text + '</span>';
@@ -1157,7 +1144,7 @@ var app = {
                 var edit = document.createElement('button');
                 edit.className = 'delete-btn-blue';
                 edit.style.marginRight = '8px';
-                edit.innerHTML = '<i class="fa-solid fa-pen" style="font-size: 0.75rem;"></i>';
+                edit.innerHTML = '<i class="fa-solid fa-ellipsis"></i>';
                 edit.onclick = function (e) { e.stopPropagation(); app.handlers.editItemText(item.id); };
                 el.appendChild(edit);
 
@@ -1557,10 +1544,68 @@ var app = {
             var item = app.state.groceryItems.find(i => i.id === id);
             if (!item) return;
 
-            var newText = prompt(item.isHeader ? 'Edit heading:' : 'Edit item:', item.text);
-            if (newText && newText.trim() && newText !== item.text) {
-                app.api.updateGroceryItem(id, { text: newText.trim() });
+            // Store the item ID for the form handler
+            app.state.editingItemId = id;
+
+            // Open modal and populate
+            app.ui.openModal('edit-item');
+            document.getElementById('edit-item-title').textContent = item.isHeader ? 'Edit Heading' : 'Edit Item';
+            document.getElementById('edit-item-text').value = item.text;
+
+            // Show options only for headers
+            var optionsDiv = document.getElementById('edit-item-options');
+            if (item.isHeader) {
+                optionsDiv.style.display = 'block';
+            } else {
+                optionsDiv.style.display = 'none';
             }
+
+            // Focus the input
+            setTimeout(() => document.getElementById('edit-item-text').focus(), 100);
+        },
+        deleteAllItems: function () {
+            if (!app.state.editingItemId) return;
+            var item = app.state.groceryItems.find(i => i.id === app.state.editingItemId);
+            if (!item || !item.isHeader) return;
+
+            if (!confirm("Delete all items under this heading?")) return;
+
+            var storeItems = app.state.groceryItems.filter(i => i.storeId === item.storeId);
+            var headIdx = storeItems.findIndex(i => i.id === item.id);
+            if (headIdx === -1) return;
+
+            var nextHeadIdx = storeItems.findIndex((i, idx) => idx > headIdx && i.isHeader);
+            var endIdx = nextHeadIdx === -1 ? storeItems.length : nextHeadIdx;
+
+            for (var i = headIdx + 1; i < endIdx; i++) {
+                if (!storeItems[i].isHeader) {
+                    app.api.deleteGroceryItem(storeItems[i].id);
+                }
+            }
+
+            app.ui.closeModals();
+        },
+        deleteClearedItems: function () {
+            if (!app.state.editingItemId) return;
+            var item = app.state.groceryItems.find(i => i.id === app.state.editingItemId);
+            if (!item || !item.isHeader) return;
+
+            if (!confirm("Delete all checked items under this heading?")) return;
+
+            var storeItems = app.state.groceryItems.filter(i => i.storeId === item.storeId);
+            var headIdx = storeItems.findIndex(i => i.id === item.id);
+            if (headIdx === -1) return;
+
+            var nextHeadIdx = storeItems.findIndex((i, idx) => idx > headIdx && i.isHeader);
+            var endIdx = nextHeadIdx === -1 ? storeItems.length : nextHeadIdx;
+
+            for (var i = headIdx + 1; i < endIdx; i++) {
+                if (!storeItems[i].isHeader && storeItems[i].checked) {
+                    app.api.deleteGroceryItem(storeItems[i].id);
+                }
+            }
+
+            app.ui.closeModals();
         },
         pasteItems: async function (storeId) {
             try {
@@ -2126,6 +2171,21 @@ var app = {
             e.target.reset();
         };
     }
+
+    const formEditItem = document.getElementById('form-edit-item');
+    if(formEditItem) formEditItem.onsubmit = function (e) {
+        e.preventDefault();
+        var fd = new FormData(e.target);
+        var newText = fd.get('text');
+
+        if (newText && newText.trim() && app.state.editingItemId) {
+            app.api.updateGroceryItem(app.state.editingItemId, { text: newText.trim() });
+        }
+
+        app.state.editingItemId = null;
+        app.ui.closeModals();
+        e.target.reset();
+    };
 };
 
 app.init();
