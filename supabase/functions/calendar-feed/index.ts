@@ -69,9 +69,13 @@ serve(async (req) => {
             const endHour = endHourNum.toString().padStart(2, '0')
             const endStr = appt.date.replace(/-/g, '') + 'T' + endHour + minute + '00'
 
+            const lastMod = (appt.updated_at || appt.created_at || new Date().toISOString())
+                .replace(/[-:]/g, '').split('.')[0] + 'Z'
+
             ical.push('BEGIN:VEVENT')
             ical.push('UID:' + appt.id + '@familycalendar.supabase')
-            ical.push('DTSTAMP:' + new Date().toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z')
+            ical.push('DTSTAMP:' + lastMod)
+            ical.push('LAST-MODIFIED:' + lastMod)
             ical.push('DTSTART:' + startStr)
             ical.push('DTEND:' + endStr)
             ical.push('SUMMARY:' + appt.title)
@@ -97,6 +101,9 @@ serve(async (req) => {
                 ...corsHeaders,
                 'Content-Type': 'text/calendar; charset=utf-8',
                 'Content-Disposition': 'attachment; filename="calendar.ics"',
+                'Cache-Control': 'no-cache, no-store, must-revalidate',
+                'Pragma': 'no-cache',
+                'Expires': '0'
             },
         })
     } catch (error) {
