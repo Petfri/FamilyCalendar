@@ -1199,18 +1199,10 @@ var app = {
                 el.appendChild(del);
             }
 
-            // Move Drag Handle to the far right
-            var handle = document.createElement('div');
-            handle.className = 'drag-handle';
-            handle.style.padding = '10px 18px';
-            handle.style.opacity = '0.4';
-            handle.style.cursor = 'grab';
-            handle.style.marginLeft = '5px';
-            handle.innerHTML = '<i class="fa-solid fa-bars"></i>';
-            el.appendChild(handle);
+            // Dragging is now allowed on the whole item except buttons
 
             el.onclick = function (e) {
-                if (e.target.closest('button') || e.target.closest('.check-circle') || e.target.closest('.drag-handle')) return;
+                if (e.target.closest('button') || e.target.closest('.check-circle')) return;
                 if (item.isHeader) {
                     app.state.selectedHeaderId = (app.state.selectedHeaderId === item.id) ? null : item.id;
                     app.render();
@@ -1226,7 +1218,6 @@ var app = {
                 animation: 150,
                 delay: 150,
                 delayOnTouchOnly: true,
-                handle: '.drag-handle',
                 filter: '.check-circle, .delete-btn-blue, button, i',
                 preventOnFilter: true,
                 onEnd: function () { app.handlers.reorderItems(); }
