@@ -1122,9 +1122,16 @@ var app = {
 
                 var hEdit = document.createElement('button');
                 hEdit.className = 'delete-btn-blue';
+                hEdit.style.marginRight = '8px';
                 hEdit.innerHTML = '<i class="fa-solid fa-ellipsis"></i>';
                 hEdit.onclick = function (e) { e.stopPropagation(); app.handlers.editItemText(item.id); };
                 el.appendChild(hEdit);
+
+                var hDel = document.createElement('button');
+                hDel.className = 'delete-btn-blue';
+                hDel.innerHTML = '<i class="fa-solid fa-xmark"></i>';
+                hDel.onclick = function (e) { e.stopPropagation(); if (confirm('Delete heading "' + item.text + '"?')) app.handlers.deleteItem(item.id); };
+                el.appendChild(hDel);
             } else {
                 var check = '<div class="check-circle' + (item.checked ? ' checked' : '') + '"></div>';
                 el.innerHTML = check + '<span class="drag-handle" style="flex:1; margin-left:15px; padding: 5px 0; ' + (item.checked ? 'text-decoration:line-through; opacity:0.5;' : '') + '">' + item.text + '</span>';
@@ -1634,7 +1641,7 @@ var app = {
                         [
                             {
                                 label: 'As One Item',
-                                icon: 'fa-solid fa-file-lines',
+                                icon: 'fa-solid fa-minus',
                                 action: function () {
                                     app.api.addGroceryItem({
                                         storeId: storeId,
