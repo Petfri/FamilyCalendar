@@ -259,6 +259,21 @@ body {
     border-radius: 4px;
 }
 
+.grid-header.today.expanded {
+    background: #00455a !important;
+    /* Slightly lighter than main primary when expanded */
+    color: white !important;
+}
+
+.grid-cell.today.expanded {
+    background: rgba(0, 44, 58, 0.03) !important;
+}
+
+.appointment-card.past {
+    opacity: 0.5;
+    filter: grayscale(0.6);
+}
+
 .grid-cell.today {
     background: transparent !important;
 }

@@ -619,13 +619,13 @@ var app = {
                 // Load Family Data
                 const res = await this.api.fetchFamily();
                 if (res && res.status === 'linked') {
-                    await this.api.loadAllData(app.state.familyId);
-                    this.initRealtime();
-
                     // Set current day as expanded by default
                     var today = new Date();
                     var day = today.getDay(); // 0 is Sunday, 1 is Monday
                     app.state.expandedDayIndex = (day + 6) % 7;
+
+                    await this.api.loadAllData(app.state.familyId);
+                    this.initRealtime();
                 } else if (res && res.status === 'unaffiliated') {
                     this.handlers.showFamilySetup();
                 } else if (res && res.status === 'claim_needed') {
@@ -674,6 +674,8 @@ var app = {
 
         // Save scroll position
         var scrollPos = main.scrollTop;
+        var listEl = document.getElementById('shopping-list-items');
+        var listScroll = listEl ? listEl.scrollTop : 0;
 
         main.innerHTML = '';
         this.renderSidebar();
@@ -695,6 +697,8 @@ var app = {
 
         // Restore scroll position
         main.scrollTop = scrollPos;
+        var newListEl = document.getElementById('shopping-list-items');
+        if (newListEl) newListEl.scrollTop = listScroll;
     },
 
     renderSidebar: function () {
@@ -964,6 +968,13 @@ var app = {
                                 card.style.background = m ? m.color : '#002c3a';
                                 card.style.color = 'white';
 
+                                // Dim past appointments
+                                var todayD = new Date(); todayD.setHours(0, 0, 0, 0);
+                                var apptD = new Date(appt.date);
+                                if (apptD < todayD) {
+                                    card.classList.add('past');
+                                }
+
                                 var t = appt.time ? appt.time.split(':')[0] : '';
                                 if (t.indexOf('0') === 0) t = t.substring(1);
                                 var html = '<div style="display:flex; flex-direction:column; flex:1; overflow:hidden;">' +
@@ -1018,7 +1029,7 @@ var app = {
         var inputWrap = document.createElement('div');
         inputWrap.className = 'input-group';
         inputWrap.style.display = 'flex';
-        inputWrap.style.gap = '8px';
+        inputWrap.style.gap = '6px';
         inputWrap.style.alignItems = 'center';
 
         // Input field
@@ -1059,7 +1070,6 @@ var app = {
         pasteBtn.style.boxShadow = '0 4px 12px rgba(0,44,58,0.2)'; // Similar shadow strength
         pasteBtn.style.border = 'none';
         pasteBtn.style.cursor = 'pointer';
-        pasteBtn.style.marginRight = '8px';
         pasteBtn.style.display = 'flex';
         pasteBtn.style.alignItems = 'center';
         pasteBtn.style.justifyContent = 'center';
