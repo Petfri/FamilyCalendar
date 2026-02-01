@@ -241,6 +241,20 @@
                     <div class="form-group"><label>End Hour (0-23)</label><input type="number" name="endHour" min="0"
                             max="23"></div>
                 </div>
+                <div
+                    style="background:#f0f7ff; padding:15px; border-radius:12px; margin-bottom:20px; border: 1px solid #cce3ff;">
+                    <p style="font-size:0.75rem; font-weight:700; color:#0056b3; margin-bottom:5px;">CALENDAR SYNC
+                        (iCAL)</p>
+                    <div style="display:flex; align-items:center; justify-content:space-between; gap: 10px;">
+                        <input type="text" id="calendar-sync-url" readonly
+                            style="font-size:0.7rem; color:#666; background:white; border:1px solid #ddd; padding:8px; border-radius:8px; flex:1; overflow:hidden; text-overflow:ellipsis;"
+                            value="Loading link...">
+                        <button type="button" class="btn-text" onclick="app.handlers.copyCalendarSyncLink()"
+                            style="font-size:0.7rem; min-width: 50px;">Copy</button>
+                    </div>
+                    <p style="font-size:0.7rem; opacity:0.6; margin-top:8px;">Copy this link to add your family calendar
+                        to Google Calendar, Outlook, or Apple Calendar (One-way sync).</p>
+                </div>
                 <div class="form-actions" style="display:flex; align-items:center; gap:12px;">
                     <button type="button" class="icon-btn-ghost" onclick="app.ui.closeModals()"><i
                             class="fa-solid fa-xmark"></i></button>
@@ -330,9 +344,9 @@
         </div>
     </div>
     </div>
-    <div style="position:fixed; bottom:5px; right:5px; font-size:10px; opacity:0.3; pointer-events:none;">v8.3
-        Edit Modal</div>
-    <script src="app.js?v=51"></script>
+    <div style="position:fixed; bottom:5px; right:5px; font-size:10px; opacity:0.3; pointer-events:none;">v8.4
+        Calendar Sync</div>
+    <script src="app.js?v=52"></script>
 </body>
 
 </html>

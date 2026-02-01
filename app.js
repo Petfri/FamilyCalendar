@@ -614,6 +614,11 @@ var app = {
                 if (res && res.status === 'linked') {
                     await this.api.loadAllData(app.state.familyId);
                     this.initRealtime();
+
+                    // Set current day as expanded by default
+                    var today = new Date();
+                    var day = today.getDay(); // 0 is Sunday, 1 is Monday
+                    app.state.expandedDayIndex = (day + 6) % 7;
                 } else if (res && res.status === 'unaffiliated') {
                     this.handlers.showFamilySetup();
                 } else if (res && res.status === 'claim_needed') {
@@ -1673,6 +1678,17 @@ var app = {
                 alert('Could not read clipboard. Please make sure you have granted clipboard permissions.');
             }
         },
+        copyCalendarSyncLink: function () {
+            var url = document.getElementById('calendar-sync-url').value;
+            if (url && url !== 'Loading link...') {
+                navigator.clipboard.writeText(url)
+                    .then(() => alert('Calendar sync link copied!'))
+                    .catch(err => {
+                        console.error('Copy failed:', err);
+                        alert('Could not copy link automatically. Please select the text and copy manually.');
+                    });
+            }
+        },
         deleteAll: function (sid, headId) {
             if (!confirm("Are you sure you want to delete this heading and ALL items inside it?")) return;
 
@@ -1923,6 +1939,14 @@ var app = {
 
                 const codeEl = document.getElementById('family-invite-code');
                 if (codeEl) codeEl.textContent = (app.state.family && app.state.family.invite_code) || '------';
+
+                // Set the iCal sync URL
+                const syncUrlEl = document.getElementById('calendar-sync-url');
+                if (syncUrlEl && app.state.familyId) {
+                    // Replace with your actual project URL if different
+                    const projectUrl = 'https://petfri-familycalendar.supabase.co';
+                    syncUrlEl.value = projectUrl + '/functions/v1/calendar-feed?id=' + app.state.familyId;
+                }
             }
         },
         closeModals: function () {
