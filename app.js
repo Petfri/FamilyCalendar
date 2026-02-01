@@ -2170,22 +2170,22 @@ var app = {
             app.ui.closeModals();
             e.target.reset();
         };
-    }
 
-    var formEditItem = document.getElementById('form-edit-item');
-    if(formEditItem) formEditItem.onsubmit = function (e) {
-        e.preventDefault();
-        var fd = new FormData(e.target);
-        var newText = fd.get('text');
+        var formEditItem = document.getElementById('form-edit-item');
+        if (formEditItem) formEditItem.onsubmit = function (e) {
+            e.preventDefault();
+            var fd = new FormData(e.target);
+            var newText = fd.get('text');
 
-        if (newText && newText.trim() && app.state.editingItemId) {
-            app.api.updateGroceryItem(app.state.editingItemId, { text: newText.trim() });
-        }
+            if (newText && newText.trim() && app.state.editingItemId) {
+                app.api.updateGroceryItem(app.state.editingItemId, { text: newText.trim() });
+            }
 
-        app.state.editingItemId = null;
-        app.ui.closeModals();
-        e.target.reset();
-    };
+            app.state.editingItemId = null;
+            app.ui.closeModals();
+            e.target.reset();
+        };
+    },
 };
 
 app.init();
