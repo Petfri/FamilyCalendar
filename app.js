@@ -1944,7 +1944,7 @@ var app = {
                 const syncUrlEl = document.getElementById('calendar-sync-url');
                 if (syncUrlEl && app.state.familyId) {
                     // Replace with your actual project URL if different
-                    const projectUrl = 'https://petfri-familycalendar.supabase.co';
+                    const projectUrl = 'https://iaamejzakzludsultmxo.supabase.co';
                     syncUrlEl.value = projectUrl + '/functions/v1/calendar-feed?id=' + app.state.familyId;
                 }
             }
