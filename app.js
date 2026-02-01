@@ -620,11 +620,6 @@ var app = {
                 // Load Family Data
                 const res = await this.api.fetchFamily();
                 if (res && res.status === 'linked') {
-                    // Force today expansion on load
-                    var now = new Date();
-                    var dIdx = (now.getDay() + 6) % 7;
-                    app.state.expandedDayIndex = dIdx;
-
                     await this.api.loadAllData(app.state.familyId);
                     this.initRealtime();
                 } else if (res && res.status === 'unaffiliated') {
@@ -827,6 +822,10 @@ var app = {
     },
 
     renderCalendar: function (container) {
+        if (this.state.expandedDayIndex === null) {
+            var now = new Date();
+            this.state.expandedDayIndex = (now.getDay() + 6) % 7;
+        }
         var start = this.getStartOfWeek(this.state.currentWeekOffset);
         var controls = document.createElement('div');
         controls.className = 'calendar-controls';
@@ -1146,15 +1145,7 @@ var app = {
             if (item.isHeader && app.state.selectedHeaderId === item.id) el.classList.add('header-selected');
             el.setAttribute('data-id', item.id);
 
-            // Add a dedicated drag handle icon at the very start
-            var handle = document.createElement('div');
-            handle.className = 'drag-handle';
-            handle.style.padding = '10px 12px';
-            handle.style.opacity = '0.3';
-            handle.style.cursor = 'grab';
-            handle.innerHTML = '<i class="fa-solid fa-bars"></i>';
-            el.appendChild(handle);
-
+            // Left side content
             if (item.isHeader) {
                 var titleSpan = document.createElement('span');
                 titleSpan.style.flex = '1';
@@ -1162,19 +1153,6 @@ var app = {
                 titleSpan.style.padding = '5px 0';
                 titleSpan.textContent = item.text;
                 el.appendChild(titleSpan);
-
-                var hEdit = document.createElement('button');
-                hEdit.className = 'delete-btn-blue';
-                hEdit.style.marginRight = '8px';
-                hEdit.innerHTML = '<i class="fa-solid fa-ellipsis"></i>';
-                hEdit.onclick = function (e) { e.stopPropagation(); app.handlers.editItemText(item.id); };
-                el.appendChild(hEdit);
-
-                var hDel = document.createElement('button');
-                hDel.className = 'delete-btn-blue';
-                hDel.innerHTML = '<i class="fa-solid fa-xmark"></i>';
-                hDel.onclick = function (e) { e.stopPropagation(); if (confirm('Delete heading "' + item.text + '"?')) app.handlers.deleteItem(item.id); };
-                el.appendChild(hDel);
             } else {
                 var checkDiv = document.createElement('div');
                 checkDiv.className = 'check-circle' + (item.checked ? ' checked' : '');
@@ -1193,15 +1171,30 @@ var app = {
                 el.appendChild(textSpan);
             }
 
-            el.onclick = function (e) {
-                if (e.target.closest('button') || e.target.closest('.check-circle') || e.target.closest('.drag-handle')) return;
-                if (item.isHeader) {
-                    app.state.selectedHeaderId = (app.state.selectedHeaderId === item.id) ? null : item.id;
-                    app.render();
-                }
-            };
+            // Right side: [Drag Handle] [Edit] [Delete]
+            var handle = document.createElement('div');
+            handle.className = 'drag-handle';
+            handle.style.padding = '10px 8px';
+            handle.style.opacity = '0.4';
+            handle.style.cursor = 'grab';
+            handle.style.marginLeft = '10px';
+            handle.innerHTML = '<i class="fa-solid fa-grip-vertical"></i>';
+            el.appendChild(handle);
 
-            if (!item.isHeader) {
+            if (item.isHeader) {
+                var hEdit = document.createElement('button');
+                hEdit.className = 'delete-btn-blue';
+                hEdit.style.marginRight = '8px';
+                hEdit.innerHTML = '<i class="fa-solid fa-ellipsis"></i>';
+                hEdit.onclick = function (e) { e.stopPropagation(); app.handlers.editItemText(item.id); };
+                el.appendChild(hEdit);
+
+                var hDel = document.createElement('button');
+                hDel.className = 'delete-btn-blue';
+                hDel.innerHTML = '<i class="fa-solid fa-xmark"></i>';
+                hDel.onclick = function (e) { e.stopPropagation(); if (confirm('Delete heading "' + item.text + '"?')) app.handlers.deleteItem(item.id); };
+                el.appendChild(hDel);
+            } else {
                 var edit = document.createElement('button');
                 edit.className = 'delete-btn-blue';
                 edit.style.marginRight = '8px';
@@ -1215,6 +1208,15 @@ var app = {
                 del.onclick = function (e) { e.stopPropagation(); app.handlers.deleteItem(item.id); };
                 el.appendChild(del);
             }
+
+            el.onclick = function (e) {
+                if (e.target.closest('button') || e.target.closest('.check-circle') || e.target.closest('.drag-handle')) return;
+                if (item.isHeader) {
+                    app.state.selectedHeaderId = (app.state.selectedHeaderId === item.id) ? null : item.id;
+                    app.render();
+                }
+            };
+
             list.appendChild(el);
         }
 
@@ -1591,6 +1593,7 @@ var app = {
 
                 app.api.addGroceryItem(newItem, insertIndex);
                 input.value = '';
+                app.state.currentInputValue = '';
                 input.focus();
             }
         },

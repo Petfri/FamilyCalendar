@@ -49,8 +49,11 @@ serve(async (req) => {
         let ical = [
             'BEGIN:VCALENDAR',
             'VERSION:2.0',
-            'PRODID:-//Family Calendar//EN',
+            'PRODID:-//Petfri//FamilyCalendar//EN',
             'X-WR-CALNAME:' + (family.name || 'Family Calendar'),
+            'X-WR-TIMEZONE:Europe/Oslo',
+            'X-PUBLISHED-TTL:PT1H',
+            'REFRESH-INTERVAL;VALUE=DURATION:PT1H',
             'CALSCALE:GREGORIAN',
             'METHOD:PUBLISH'
         ]
@@ -72,7 +75,10 @@ serve(async (req) => {
             ical.push('DTSTART:' + startStr)
             ical.push('DTEND:' + endStr)
             ical.push('SUMMARY:' + appt.title)
-            if (appt.comment) ical.push('DESCRIPTION:' + appt.comment)
+            ical.push('TRANSP:OPAQUE')
+            ical.push('STATUS:CONFIRMED')
+            ical.push('SEQUENCE:0')
+            if (appt.comment) ical.push('DESCRIPTION:' + appt.comment.replace(/\n/g, '\\n'))
 
             // Handle repetition if needed
             if (appt.repeat_type && appt.repeat_type !== 'none') {
