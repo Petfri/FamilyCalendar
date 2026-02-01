@@ -902,7 +902,11 @@ body {
 }
 
 .interactive-item:active {
-    background: rgba(33, 150, 243, 0.08) !important;
+    background: inherit;
+}
+
+.interactive-item {
+    -webkit-tap-highlight-color: transparent !important;
 }
 
 .shopping-item.is-header {
