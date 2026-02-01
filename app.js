@@ -1174,8 +1174,8 @@ var app = {
             // Right side: [Drag Handle] [Edit] [Delete]
             var handle = document.createElement('div');
             handle.className = 'drag-handle';
-            handle.style.padding = '10px 8px';
-            handle.style.opacity = '0.4';
+            handle.style.padding = '10px 18px';
+            handle.style.opacity = '0.5';
             handle.style.cursor = 'grab';
             handle.style.marginLeft = '10px';
             handle.innerHTML = '<i class="fa-solid fa-bars"></i>';
