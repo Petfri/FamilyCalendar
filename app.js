@@ -40,7 +40,8 @@ var app = {
         draggingOccurrenceDate: null,
         dropTarget: null,
         expandedDayIndex: null,
-        familyId: null
+        familyId: null,
+        lastTypingTime: 0
     },
 
     api: {
@@ -144,6 +145,14 @@ var app = {
                     },
                     (payload) => {
                         console.log('🔄 Grocery items changed:', payload);
+
+                        // Don't reload if user typed recently (within 3 seconds)
+                        const timeSinceTyping = Date.now() - app.state.lastTypingTime;
+                        if (timeSinceTyping < 3000) {
+                            console.log('⏸️ Skipping reload - user typed', timeSinceTyping, 'ms ago');
+                            return;
+                        }
+
                         // Don't reload if user is actively typing
                         const activeElement = document.activeElement;
                         if (activeElement && (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA')) {
@@ -1011,6 +1020,10 @@ var app = {
         input.setAttribute('autocapitalize', 'off');
         input.setAttribute('spellcheck', 'false');
         input.name = 'shopping-item-' + Date.now();  // Unique name to prevent autofill
+        input.oninput = function () {
+            // Track typing time to prevent realtime interruptions
+            app.state.lastTypingTime = Date.now();
+        };
         input.onkeydown = function (e) {
             if (e.key === 'Enter') {
                 e.preventDefault();
