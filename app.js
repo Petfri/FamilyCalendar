@@ -1022,16 +1022,18 @@ var app = {
         // Paste button
         var pasteBtn = document.createElement('button');
         pasteBtn.style.minHeight = '48px';
-        pasteBtn.style.minWidth = '48px';
+        pasteBtn.style.minWidth = '56px';
         pasteBtn.style.borderRadius = '14px';
         pasteBtn.style.background = 'white';
-        pasteBtn.style.border = '1px solid #ddd';
+        pasteBtn.style.border = 'none';
+        pasteBtn.style.boxShadow = '0 2px 8px rgba(0,0,0,0.1)';
         pasteBtn.style.color = 'var(--primary)';
         pasteBtn.style.cursor = 'pointer';
         pasteBtn.style.marginRight = '8px';
         pasteBtn.style.display = 'flex';
         pasteBtn.style.alignItems = 'center';
         pasteBtn.style.justifyContent = 'center';
+        pasteBtn.style.fontSize = '1.2rem';
         pasteBtn.title = 'Paste from Clipboard';
         pasteBtn.innerHTML = '<i class="fa-solid fa-paste"></i>';
         pasteBtn.onclick = function () { app.handlers.pasteItems(store.id); };
@@ -1107,7 +1109,7 @@ var app = {
                 var hEdit = document.createElement('button');
                 hEdit.className = 'delete-btn-blue';
                 hEdit.style.marginRight = '8px';
-                hEdit.innerHTML = '<i class="fa-solid fa-i-cursor"></i>';
+                hEdit.innerHTML = '<i class="fa-solid fa-pen" style="font-size: 0.75rem;"></i>';
                 hEdit.onclick = function (e) { e.stopPropagation(); app.handlers.editItemText(item.id); };
                 el.appendChild(hEdit);
 
@@ -1142,7 +1144,7 @@ var app = {
                 var edit = document.createElement('button');
                 edit.className = 'delete-btn-blue';
                 edit.style.marginRight = '8px';
-                edit.innerHTML = '<i class="fa-solid fa-i-cursor"></i>';
+                edit.innerHTML = '<i class="fa-solid fa-pen" style="font-size: 0.75rem;"></i>';
                 edit.onclick = function (e) { e.stopPropagation(); app.handlers.editItemText(item.id); };
                 el.appendChild(edit);
 
