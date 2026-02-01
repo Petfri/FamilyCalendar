@@ -42,7 +42,8 @@ var app = {
         expandedDayIndex: null,
         familyId: null,
         lastTypingTime: 0,
-        editingItemId: null
+        editingItemId: null,
+        currentInputValue: ''
     },
 
     api: {
@@ -619,10 +620,10 @@ var app = {
                 // Load Family Data
                 const res = await this.api.fetchFamily();
                 if (res && res.status === 'linked') {
-                    // Set current day as expanded by default
-                    var today = new Date();
-                    var day = today.getDay(); // 0 is Sunday, 1 is Monday
-                    app.state.expandedDayIndex = (day + 6) % 7;
+                    // Force today expansion on load
+                    var now = new Date();
+                    var dIdx = (now.getDay() + 6) % 7;
+                    app.state.expandedDayIndex = dIdx;
 
                     await this.api.loadAllData(app.state.familyId);
                     this.initRealtime();
@@ -1045,12 +1046,14 @@ var app = {
 
         input.placeholder = selectedHeaderName ? 'Add to ' + selectedHeaderName + '...' : 'Add something...';
         input.style.flex = '1';
+        input.value = this.state.currentInputValue || ''; // Restore what user was typing
         input.autocomplete = 'off';
         input.setAttribute('autocomplete', 'off');
-        input.setAttribute('autocapitalize', 'sentences'); // Re-enable for mobile
+        input.setAttribute('autocapitalize', 'sentences');
         input.name = 'shopping-item-' + Date.now();
         input.oninput = function () {
             app.state.lastTypingTime = Date.now();
+            app.state.currentInputValue = this.value; // Save as they type
         };
         input.onkeydown = function (e) {
             if (e.key === 'Enter') {
@@ -1143,8 +1146,22 @@ var app = {
             if (item.isHeader && app.state.selectedHeaderId === item.id) el.classList.add('header-selected');
             el.setAttribute('data-id', item.id);
 
+            // Add a dedicated drag handle icon at the very start
+            var handle = document.createElement('div');
+            handle.className = 'drag-handle';
+            handle.style.padding = '10px 12px';
+            handle.style.opacity = '0.3';
+            handle.style.cursor = 'grab';
+            handle.innerHTML = '<i class="fa-solid fa-bars"></i>';
+            el.appendChild(handle);
+
             if (item.isHeader) {
-                el.innerHTML = '<span class="drag-handle" style="flex:1; margin-left:0; font-weight:800; padding: 5px 0;">' + item.text + '</span>';
+                var titleSpan = document.createElement('span');
+                titleSpan.style.flex = '1';
+                titleSpan.style.fontWeight = '800';
+                titleSpan.style.padding = '5px 0';
+                titleSpan.textContent = item.text;
+                el.appendChild(titleSpan);
 
                 var hEdit = document.createElement('button');
                 hEdit.className = 'delete-btn-blue';
@@ -1159,17 +1176,28 @@ var app = {
                 hDel.onclick = function (e) { e.stopPropagation(); if (confirm('Delete heading "' + item.text + '"?')) app.handlers.deleteItem(item.id); };
                 el.appendChild(hDel);
             } else {
-                var check = '<div class="check-circle' + (item.checked ? ' checked' : '') + '"></div>';
-                el.innerHTML = check + '<span class="drag-handle" style="flex:1; margin-left:15px; padding: 5px 0; ' + (item.checked ? 'text-decoration:line-through; opacity:0.5;' : '') + '">' + item.text + '</span>';
+                var checkDiv = document.createElement('div');
+                checkDiv.className = 'check-circle' + (item.checked ? ' checked' : '');
+                checkDiv.onclick = function (e) { e.stopPropagation(); app.handlers.toggleItem(item.id); };
+                el.appendChild(checkDiv);
+
+                var textSpan = document.createElement('span');
+                textSpan.style.flex = '1';
+                textSpan.style.marginLeft = '15px';
+                textSpan.style.padding = '5px 0';
+                if (item.checked) {
+                    textSpan.style.textDecoration = 'line-through';
+                    textSpan.style.opacity = '0.5';
+                }
+                textSpan.textContent = item.text;
+                el.appendChild(textSpan);
             }
 
             el.onclick = function (e) {
-                if (e.target.closest('button')) return;
+                if (e.target.closest('button') || e.target.closest('.check-circle') || e.target.closest('.drag-handle')) return;
                 if (item.isHeader) {
                     app.state.selectedHeaderId = (app.state.selectedHeaderId === item.id) ? null : item.id;
-                    app.render(); // Use full render to ensure all components see the change
-                } else {
-                    app.handlers.toggleItem(item.id);
+                    app.render();
                 }
             };
 

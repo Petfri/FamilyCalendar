@@ -56,10 +56,15 @@ serve(async (req) => {
         ]
 
         appointments.forEach(appt => {
-            const startStr = appt.date.replace(/-/g, '') + 'T' + appt.time.replace(/:/g, '') + '00'
+            const timeParts = appt.time.split(':')
+            const hour = timeParts[0].padStart(2, '0')
+            const minute = (timeParts[1] || '00').padStart(2, '0')
+            const startStr = appt.date.replace(/-/g, '') + 'T' + hour + minute + '00'
+
             // Assume 1 hour duration if not specified
-            const endHour = (parseInt(appt.time.split(':')[0]) + 1).toString().padStart(2, '0')
-            const endStr = appt.date.replace(/-/g, '') + 'T' + endHour + appt.time.split(':')[1].replace(/:/g, '') + '00'
+            const endHourNum = parseInt(hour) + 1
+            const endHour = endHourNum.toString().padStart(2, '0')
+            const endStr = appt.date.replace(/-/g, '') + 'T' + endHour + minute + '00'
 
             ical.push('BEGIN:VEVENT')
             ical.push('UID:' + appt.id + '@familycalendar.supabase')
