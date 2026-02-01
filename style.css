@@ -16,6 +16,8 @@
     margin: 0;
     padding: 0;
     -webkit-tap-highlight-color: transparent;
+    user-select: none;
+    -webkit-user-select: none;
 }
 
 body {
@@ -901,7 +903,6 @@ body {
 
 .interactive-item:active {
     background: rgba(33, 150, 243, 0.08) !important;
-    transform: scale(0.98);
 }
 
 .shopping-item.is-header {

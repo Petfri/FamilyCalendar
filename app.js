@@ -1171,16 +1171,6 @@ var app = {
                 el.appendChild(textSpan);
             }
 
-            // Right side: [Drag Handle] [Edit] [Delete]
-            var handle = document.createElement('div');
-            handle.className = 'drag-handle';
-            handle.style.padding = '10px 18px';
-            handle.style.opacity = '0.5';
-            handle.style.cursor = 'grab';
-            handle.style.marginLeft = '10px';
-            handle.innerHTML = '<i class="fa-solid fa-bars"></i>';
-            el.appendChild(handle);
-
             if (item.isHeader) {
                 var hEdit = document.createElement('button');
                 hEdit.className = 'delete-btn-blue';
@@ -1208,6 +1198,16 @@ var app = {
                 del.onclick = function (e) { e.stopPropagation(); app.handlers.deleteItem(item.id); };
                 el.appendChild(del);
             }
+
+            // Move Drag Handle to the far right
+            var handle = document.createElement('div');
+            handle.className = 'drag-handle';
+            handle.style.padding = '10px 18px';
+            handle.style.opacity = '0.4';
+            handle.style.cursor = 'grab';
+            handle.style.marginLeft = '5px';
+            handle.innerHTML = '<i class="fa-solid fa-bars"></i>';
+            el.appendChild(handle);
 
             el.onclick = function (e) {
                 if (e.target.closest('button') || e.target.closest('.check-circle') || e.target.closest('.drag-handle')) return;
