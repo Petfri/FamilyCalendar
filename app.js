@@ -1428,13 +1428,24 @@ var app = {
         gotoToday: function () { app.state.currentWeekOffset = 0; app.render(); },
         onAddSidebarItem: function () {
             if (app.state.view === 'calendar') {
-                app.handlers.onCellClick(new Date(), 12);
+                app.ui.openModal('member');
+                document.getElementById('member-modal-title').textContent = 'New Member';
+                document.getElementById('btn-delete-member').style.display = 'none';
+                var form = document.getElementById('form-member');
+                form.reset(); form.querySelector('[name=id]').value = '';
             } else {
                 app.ui.openModal('store');
                 document.getElementById('store-modal-title').textContent = 'New List';
                 document.getElementById('btn-delete-store').style.display = 'none';
                 var form = document.getElementById('form-store');
                 form.reset(); form.querySelector('[name=id]').value = '';
+            }
+        },
+        onAddNewItem: function () {
+            if (app.state.view === 'calendar') {
+                app.handlers.onCellClick(new Date(), 12);
+            } else {
+                app.handlers.onAddSidebarItem();
             }
         },
         onEditStore: function (s) {
