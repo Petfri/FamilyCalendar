@@ -38,7 +38,7 @@ var app = {
         currentUser: null,
         dragAllowed: false,
         justDragged: false,
-        whatsNewVersion: 'alpha-0.2',
+        whatsNewVersion: 'alpha-0.2.1',
         draggingOccurrenceDate: null,
         dropTarget: null,
         expandedDayIndex: null,
@@ -1432,6 +1432,7 @@ var app = {
         }).subscribe();
     },
 
+
     auth: {
         showLogin: function () {
             document.getElementById('modal-overlay').classList.remove('hidden');
@@ -1555,18 +1556,6 @@ var app = {
     showCreateProfile: function () {
         const name = prompt("Enter your name:");
         if (name) app.api.createMember(name);
-    },
-    checkWhatsNew: function () {
-        var lastSeen = localStorage.getItem('whatsNewSeen');
-        if (lastSeen !== app.state.whatsNewVersion) {
-            app.ui.openModal('whatsNew');
-        }
-    },
-    closeWhatsNew: function (dontShow) {
-        if (dontShow) {
-            localStorage.setItem('whatsNewSeen', app.state.whatsNewVersion);
-        }
-        app.ui.closeModals();
     }
 },
 
@@ -2154,6 +2143,19 @@ backToFamilySetup: function () {
 },
 
 ui: {
+    checkWhatsNew: function () {
+        var lastSeen = localStorage.getItem('whatsNewSeen');
+        if (lastSeen !== app.state.whatsNewVersion) {
+            // Small delay to ensure modal overlay is ready/z-index correct
+            setTimeout(() => app.ui.openModal('whats-new'), 500);
+        }
+    },
+    closeWhatsNew: function (dontShow) {
+        if (dontShow) {
+            localStorage.setItem('whatsNewSeen', app.state.whatsNewVersion);
+        }
+        app.ui.closeModals();
+    },
     openModal: function (n) {
         // Push state for back button handling
         history.pushState({ modal: n }, '');
