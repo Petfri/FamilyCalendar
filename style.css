@@ -907,7 +907,9 @@ body {
 }
 
 .week-pill {
-    flex: 0 0 calc(25% - 6px);
+    flex: 1;
+    min-width: 0;
+    max-width: 100%;
     text-align: center;
     padding: 4px 0;
     border-radius: 8px;

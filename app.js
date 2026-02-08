@@ -38,7 +38,7 @@ var app = {
         currentUser: null,
         dragAllowed: false,
         justDragged: false,
-        whatsNewVersion: 'alpha-0.2.1',
+        whatsNewVersion: 'alpha-0.2.2',
         draggingOccurrenceDate: null,
         dropTarget: null,
         expandedDayIndex: null,
@@ -911,11 +911,11 @@ var app = {
         var fullMonths = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
         var shortMonths = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
         var monthIdx = start.getMonth();
-        controls.innerHTML = '<div style="display:flex; gap:12px; align-items:center; flex:1; overflow:hidden;">' +
+        controls.innerHTML = '<div style="display:flex; gap:8px; align-items:center; flex:1; overflow:hidden;">' +
             '<button class="week-nav-btn" onclick="app.handlers.gotoToday()" title="Today" style="border-radius:50%; min-width:36px;"><i class="fa-solid fa-calendar-day"></i></button>' +
-            '<div style="display:flex; flex-direction:column; align-items:flex-start; min-width:80px;">' +
+            '<div style="display:flex; flex-direction:column; align-items:flex-start; min-width:55px;">' +
             '<small style="font-size:0.65rem; font-weight:800; opacity:0.6; text-transform:uppercase; letter-spacing:1px; color:var(--primary);">Week ' + weekNum + '</small>' +
-            '<h3 style="margin:0; line-height:1.2; font-size:1.0rem; font-weight:700;">' +
+            '<h3 style="margin:0; line-height:1.2; font-size:0.9rem; font-weight:700;">' +
             '<span class="month-full">' + fullMonths[monthIdx] + '</span>' +
             '<span class="month-short">' + shortMonths[monthIdx] + '</span>' +
             '</h3>' +
@@ -942,8 +942,8 @@ var app = {
                 var isCurrent = (off === 0);
                 pill.className = 'week-pill' + (app.state.currentWeekOffset === off ? ' active' : '') + (isCurrent ? ' current-real-week' : '');
 
-                // Fixed width/height style
-                pill.style.minWidth = '45px';
+                pill.style.flex = '1';
+                pill.style.minWidth = '0'; // Allow shrinking
                 pill.style.height = '42px';
 
                 pill.innerHTML =
@@ -968,6 +968,7 @@ var app = {
         grid.style.gridTemplateColumns = colDef;
 
         var hTime = document.createElement('div'); hTime.className = 'grid-header';
+        hTime.style.display = 'flex'; hTime.style.justifyContent = 'center'; hTime.style.alignItems = 'center';
         hTime.innerHTML = '<i class="fa-solid fa-clock" style="font-size:1rem;"></i>'; // Clock Icon
         grid.appendChild(hTime);
         var days = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'];
