@@ -23,27 +23,27 @@ try {
 var app = {
     syncId: 'family-shared-v1',
     state: {
-        currentUser: null,
         view: 'calendar',
-        members: [],
+        currentWeekOffset: 0,
         appointments: [],
+        members: [],
         storeTypes: [],
         groceryItems: [],
-        currentWeekOffset: 0,
+        settings: { startHour: 6, endHour: 23 }, // Default settings
         selectedStoreId: null,
         selectedMemberId: null,
         selectedHeaderId: null,
-        settings: { startHour: 8, endHour: 20 },
-        history: [],
-        maxHistory: 10,
-        draggingAppt: null,
+        editingItemId: null,
+        family: null,
+        currentUser: null,
+        dragAllowed: false,
+        justDragged: false,
+        whatsNewVersion: 'alpha-0.2',
         draggingOccurrenceDate: null,
         dropTarget: null,
         expandedDayIndex: null,
         familyId: null,
-        lastTypingTime: 0,
-        editingItemId: null,
-        currentInputValue: ''
+        lastTypingTime: 0
     },
 
     api: {
@@ -600,22 +600,77 @@ var app = {
         }
     },
 
+    util: {
+        longPress: function (el, callback) {
+            var startX = 0;
+            var startY = 0;
+
+            function onDown(e) {
+                if (e.button !== undefined && e.button !== 0) return;
+                isPressed = true;
+                startX = e.clientX;
+                startY = e.clientY;
+                el.classList.remove('drag-ready');
+
+                timer = setTimeout(function () {
+                    if (isPressed) {
+                        el.classList.add('drag-ready');
+                        if (navigator.vibrate) navigator.vibrate(20);
+                        if (callback) callback();
+                    }
+                }, 300);
+            }
+
+            function onMove(e) {
+                if (!isPressed) return;
+                var moveX = Math.abs(e.clientX - startX);
+                var moveY = Math.abs(e.clientY - startY);
+                if (moveX > 20 || moveY > 20) {
+                    isPressed = false;
+                    clearTimeout(timer);
+                    el.classList.remove('drag-ready');
+                }
+            }
+
+            function onUp() {
+                isPressed = false;
+                clearTimeout(timer);
+                setTimeout(() => el.classList.remove('drag-ready'), 100);
+            }
+
+            el.addEventListener('pointerdown', onDown);
+            el.addEventListener('pointermove', onMove);
+            el.addEventListener('pointerup', onUp);
+            el.addEventListener('pointercancel', onUp);
+            el.addEventListener('pointerleave', onUp);
+
+            // Clean up old listeners if re-rendering (not strictly necessary here due to recreating elements)
+        }
+    },
+
     init: async function () {
         this.setupEventListeners();
         this.setupSwipe();
 
         // Handle mobile back button for modals
-        window.onpopstate = function () {
-            if (!document.getElementById('modal-overlay').classList.contains('hidden')) {
-                app.ui.closeModals(true); // pass true to avoid double popState
+        window.onpopstate = function (event) {
+            var visibleModal = document.querySelector('.modal:not(.hidden)');
+            if (visibleModal) {
+                app.ui.closeModals();
+                // Push state again so forward button doesn't do anything weird, effectively trapping back button for modal close
+                history.pushState(null, null, location.href);
             }
         };
 
         // Auth Check
-        if (supabaseClient) {
+        if (typeof supabaseClient !== 'undefined' && supabaseClient) {
             const { data: { session } } = await supabaseClient.auth.getSession();
             if (!session) {
                 this.auth.showLogin();
+                // Even if not logged in, we might want to render empty or local state? 
+                // For now, allow rendering local data if exists or empty.
+                this.loadLocalData();
+                this.render();
             } else {
                 // Load Family Data
                 const res = await this.api.fetchFamily();
@@ -623,15 +678,21 @@ var app = {
                     await this.api.loadAllData(app.state.familyId);
                     this.initRealtime();
                 } else if (res && res.status === 'unaffiliated') {
-                    this.handlers.showFamilySetup();
+                    this.auth.showFamilySetup();
                 } else if (res && res.status === 'claim_needed') {
                     this.auth.showClaimProfile(res.unlinked);
                 }
+                // If loading failed but we have session, we might still be in a valid local state?
+                // Rely on loadAllData to trigger render.
             }
         } else {
-            this.loadLocalData(); // Fallback
+            console.warn('Supabase not available, using local data only.');
+            this.loadLocalData();
             this.render();
         }
+
+        // Check for updates after a short delay to ensure UI is ready
+        setTimeout(() => this.ui.checkWhatsNew(), 1000);
     },
 
     loadLocalData: function () {
@@ -667,6 +728,13 @@ var app = {
         var activeId = document.activeElement ? document.activeElement.id : null;
         var main = document.getElementById('main-view');
         if (!main) return;
+
+        // Prevent input loss on phone while typing
+        if (this.state.view === 'shopping' && document.activeElement && document.activeElement.id === 'shopping-input') {
+            this.renderSidebar(); // Keep sidebar updated
+            this.renderShoppingListItems(); // Update list items only
+            return;
+        }
 
         // Save scroll position
         var scrollPos = main.scrollTop;
@@ -716,10 +784,13 @@ var app = {
                     left.className = 'drag-handle';
                     left.style.display = 'flex'; left.style.alignItems = 'center'; left.style.gap = '12px'; left.style.flex = '1';
                     left.innerHTML = '<div class="member-avatar" style="background:' + m.color + '">' + (m.name || 'U')[0] + '</div><span>' + m.name + '</span>';
-                    left.onclick = function () {
+                    left.onclick = function (e) {
+                        // Prevent click if recently dragged
+                        if (el.classList.contains('drag-ready') || app.state.justDragged) return;
                         app.state.selectedMemberId = m.id;
                         app.render();
                     };
+                    app.util.longPress(el); // Add feedback
 
                     var settingsBtn = document.createElement('button');
                     settingsBtn.className = 'delete-btn-ghost';
@@ -748,7 +819,11 @@ var app = {
                     left.className = 'drag-handle';
                     left.style.display = 'flex'; left.style.alignItems = 'center'; left.style.gap = '12px'; left.style.flex = '1';
                     left.innerHTML = '<i class="fa-solid fa-layer-group"></i><span>' + s.name + '</span>';
-                    left.onclick = function () { app.state.selectedStoreId = s.id; app.render(); };
+                    left.onclick = function () {
+                        if (el.classList.contains('drag-ready') || app.state.justDragged) return;
+                        app.state.selectedStoreId = s.id; app.render();
+                    };
+                    app.util.longPress(el);
 
                     var right = document.createElement('div');
                     right.style.display = 'flex'; right.style.alignItems = 'center';
@@ -775,9 +850,12 @@ var app = {
                 ghostClass: 'sortable-ghost',
                 draggable: '.sidebar-item',
                 handle: '.drag-handle',
-                delay: 100,
-                delayOnTouchOnly: true,
+                delay: 300,
+                delayOnTouchOnly: false,
+                touchStartThreshold: 20, // Tolerance for wobble
+                onStart: function () { app.state.justDragged = true; list.querySelectorAll('.drag-ready').forEach(el => el.classList.remove('drag-ready')); },
                 onEnd: function () {
+                    setTimeout(() => app.state.justDragged = false, 100);
                     var newOrderIds = Array.prototype.slice.call(list.children).map(function (el) { return el.getAttribute('data-id'); });
                     var updates = [];
                     if (app.state.view === 'calendar') {
@@ -842,9 +920,9 @@ var app = {
             '<span class="month-short">' + shortMonths[monthIdx] + '</span>' +
             '</h3>' +
             '</div>' +
-            '<div style="display:flex; align-items:center; gap:8px; flex:1; justify-content:center;">' +
+            '<div style="display:flex; align-items:center; gap:4px; flex:1; justify-content:flex-start;">' +
             '<button class="week-nav-btn" onclick="app.handlers.changeWeek(-4)"><i class="fa-solid fa-angles-left"></i></button>' +
-            '<div id="header-week-selector" class="week-selector-container" style="flex:1; max-width:400px; padding: 0 10px;"></div>' +
+            '<div id="header-week-selector" class="week-selector-container" style="flex:1; max-width:400px; padding: 0 4px;"></div>' +
             '<button class="week-nav-btn" onclick="app.handlers.changeWeek(4)"><i class="fa-solid fa-angles-right"></i></button>' +
             '</div>' +
             '</div>';
@@ -858,17 +936,19 @@ var app = {
                 var d = app.getStartOfWeek(off);
                 var endD = new Date(d); endD.setDate(d.getDate() + 6);
                 var num = app.getWeekNumber(d);
-                var monthLabel = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][d.getMonth()];
                 var dateRange = d.getDate() + '-' + endD.getDate();
 
                 var pill = document.createElement('div');
                 var isCurrent = (off === 0);
                 pill.className = 'week-pill' + (app.state.currentWeekOffset === off ? ' active' : '') + (isCurrent ? ' current-real-week' : '');
 
+                // Fixed width/height style
+                pill.style.minWidth = '45px';
+                pill.style.height = '42px';
+
                 pill.innerHTML =
-                    '<div style="font-size:0.55rem; opacity:0.8; line-height:1; margin-bottom:1px;">' + monthLabel + '</div>' +
-                    '<div style="font-size:0.8rem; font-weight:900; line-height:1;">W' + num + '</div>' +
-                    '<div style="font-size:0.55rem; opacity:0.8; line-height:1; margin-top:1px;">' + dateRange + '</div>';
+                    '<div style="font-size:0.9rem; font-weight:900; line-height:1;">W' + num + '</div>' +
+                    '<div style="font-size:0.55rem; opacity:0.8; line-height:1; margin-top:2px;">' + dateRange + '</div>';
 
                 pill.onclick = function () { app.state.currentWeekOffset = off; app.render(); };
                 weekCont.appendChild(pill);
@@ -887,7 +967,9 @@ var app = {
         }
         grid.style.gridTemplateColumns = colDef;
 
-        var hTime = document.createElement('div'); hTime.className = 'grid-header'; hTime.textContent = 'TIME'; grid.appendChild(hTime);
+        var hTime = document.createElement('div'); hTime.className = 'grid-header';
+        hTime.innerHTML = '<i class="fa-solid fa-clock" style="font-size:1rem;"></i>'; // Clock Icon
+        grid.appendChild(hTime);
         var days = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'];
         var today = new Date();
         for (var i = 0; i < 7; i++) {
@@ -896,7 +978,9 @@ var app = {
                 var currentDay = new Date(start); currentDay.setDate(start.getDate() + idx);
                 hDay.className = 'grid-header' + (idx >= 5 ? ' weekend' : '') + (currentDay.toDateString() === today.toDateString() ? ' today' : '');
                 if (app.state.expandedDayIndex === idx) hDay.classList.add('expanded');
-                hDay.textContent = days[idx] + ' ' + currentDay.getDate();
+                // Smaller day names
+                hDay.innerHTML = '<small style="font-size:0.65rem; display:block; margin-bottom:2px;">' + days[idx] + '</small>' +
+                    '<span style="font-size:0.9rem;">' + currentDay.getDate() + '</span>';
                 hDay.onclick = function () {
                     app.state.expandedDayIndex = (app.state.expandedDayIndex === idx) ? null : idx;
                     app.render();
@@ -964,7 +1048,57 @@ var app = {
                                 var card = document.createElement('div');
                                 card.className = 'appointment-card';
                                 card.draggable = true;
-                                card.ondragstart = function (e) { app.handlers.onDragStart(e, appt, cellDate); };
+
+                                // Unified long press logic
+                                var dragTimer = null;
+                                var startX = 0, startY = 0;
+
+                                card.onpointerdown = function (e) {
+                                    if (e.target.closest('.appt-symbol')) return; // Don't drag symbols
+                                    app.state.dragAllowed = false;
+                                    startX = e.clientX;
+                                    startY = e.clientY;
+                                    card.classList.remove('drag-ready');
+
+                                    dragTimer = setTimeout(function () {
+                                        app.state.dragAllowed = true;
+                                        card.classList.add('drag-ready');
+                                        if (navigator.vibrate) navigator.vibrate(20);
+                                    }, 300); // 300ms delay for calendar - synced with global longPress
+                                };
+
+                                card.onpointermove = function (e) {
+                                    if (!dragTimer) return;
+                                    var moveX = Math.abs(e.clientX - startX);
+                                    var moveY = Math.abs(e.clientY - startY);
+                                    if (moveX > 20 || moveY > 20) {
+                                        clearTimeout(dragTimer);
+                                        dragTimer = null;
+                                        app.state.dragAllowed = false;
+                                        card.classList.remove('drag-ready');
+                                    }
+                                };
+
+                                card.onpointerup = function () {
+                                    clearTimeout(dragTimer);
+                                    dragTimer = null;
+                                    setTimeout(() => { app.state.dragAllowed = false; card.classList.remove('drag-ready'); }, 100);
+                                };
+                                card.onpointerleave = function () {
+                                    clearTimeout(dragTimer);
+                                    dragTimer = null;
+                                    app.state.dragAllowed = false;
+                                    card.classList.remove('drag-ready');
+                                };
+
+                                card.ondragstart = function (e) {
+                                    if (!app.state.dragAllowed) {
+                                        e.preventDefault();
+                                        return;
+                                    }
+                                    app.handlers.onDragStart(e, appt, cellDate);
+                                };
+
                                 card.style.background = m ? m.color : '#002c3a';
                                 card.style.color = 'white';
 
@@ -975,20 +1109,26 @@ var app = {
                                     card.classList.add('past');
                                 }
 
-                                var t = appt.time ? appt.time.split(':')[0] : '';
-                                if (t.indexOf('0') === 0) t = t.substring(1);
-                                var html = '<div style="display:flex; flex-direction:column; flex:1; overflow:hidden;">' +
+                                var t = appt.time || '';
+                                // Remove seconds if present
+                                if (t.split(':').length === 3) t = t.substring(0, 5);
+
+                                var html = '<div style="display:flex; flex-direction:column; flex:1; overflow:hidden; pointer-events:none;">' +
                                     '<small style="font-size:0.55rem; opacity:0.8; font-weight:700; line-height:1;">' + t + '</small>' +
                                     '<span style="font-size:0.7rem; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">' + appt.title + '</span>' +
                                     '</div>';
                                 if (appt.comment && appt.comment.trim()) {
-                                    html += '<span style="font-weight:900; font-size:0.7rem; margin-left:4px;">N</span>';
+                                    html += '<span class="appt-symbol" style="width:6px; height:6px; background:red; border-radius:50%; display:inline-block; margin-left:4px;"></span>';
                                 }
                                 if (appt.repeatType && appt.repeatType !== 'none') {
-                                    html += '<span style="font-weight:900; font-size:0.7rem; margin-left:4px;">S</span>';
+                                    html += '<span class="appt-symbol" style="font-weight:900; font-size:0.7rem; margin-left:4px;">S</span>';
                                 }
                                 card.innerHTML = html;
-                                card.onclick = function (e) { e.stopPropagation(); app.handlers.onEditAppointment(appt, cellDate); };
+                                card.onclick = function (e) {
+                                    if (app.state.dragAllowed) return; // Don't click if we just dragged
+                                    e.stopPropagation();
+                                    app.handlers.onEditAppointment(appt, cellDate);
+                                };
                                 cell.appendChild(card);
                             }
                         })(app.state.appointments[j]);
@@ -1203,11 +1343,17 @@ var app = {
 
             el.onclick = function (e) {
                 if (e.target.closest('button') || e.target.closest('.check-circle')) return;
+                // If just dragged or drag ready, ignore click
+                if (el.classList.contains('drag-ready') || app.state.justDragged) return;
+
                 if (item.isHeader) {
                     app.state.selectedHeaderId = (app.state.selectedHeaderId === item.id) ? null : item.id;
                     app.render();
                 }
             };
+
+            // Add long press feedback
+            app.util.longPress(el);
 
             list.appendChild(el);
         }
@@ -1216,10 +1362,14 @@ var app = {
             if (list._sortable) list._sortable.destroy();
             list._sortable = new Sortable(list, {
                 animation: 150,
-                delay: 150,
-                delayOnTouchOnly: true,
+                draggable: '.shopping-item:not(.is-header)', // Only draggable if not a header
+                handle: '.shopping-item:not(.is-header)', // Dragging on the whole item (except buttons/checkbox)
+                delay: 300,
+                delayOnTouchOnly: false, // Apply delay to mouse too for consistency
+                touchStartThreshold: 20, // Tolerance for wobble
                 filter: '.check-circle, .delete-btn-blue, button, i',
                 preventOnFilter: true,
+                onStart: function () { list.querySelectorAll('.drag-ready').forEach(el => el.classList.remove('drag-ready')); },
                 onEnd: function () { app.handlers.reorderItems(); }
             });
         }
@@ -1401,883 +1551,908 @@ var app = {
             createBtn.onclick = () => app.auth.showCreateProfile();
             container.appendChild(createBtn);
         },
-        showCreateProfile: function () {
-            const name = prompt("Enter your name:");
-            if (name) app.api.createMember(name);
+    },
+    showCreateProfile: function () {
+        const name = prompt("Enter your name:");
+        if (name) app.api.createMember(name);
+    },
+    checkWhatsNew: function () {
+        var lastSeen = localStorage.getItem('whatsNewSeen');
+        if (lastSeen !== app.state.whatsNewVersion) {
+            app.ui.openModal('whatsNew');
         }
     },
+    closeWhatsNew: function (dontShow) {
+        if (dontShow) {
+            localStorage.setItem('whatsNewSeen', app.state.whatsNewVersion);
+        }
+        app.ui.closeModals();
+    }
+},
 
     handlers: {
         undo: function () {
             // Undo not supported in granular sync yet (requires complexity)
             alert("Undo not available in cloud beta");
-        },
-        onSettings: function () {
-            app.ui.openModal('settings');
-            const form = document.getElementById('form-settings');
-            form.querySelector('[name=startHour]').value = app.state.settings.startHour;
-            form.querySelector('[name=endHour]').value = app.state.settings.endHour;
+    },
+onSettings: function () {
+    app.ui.openModal('settings');
+    const form = document.getElementById('form-settings');
+    form.querySelector('[name=startHour]').value = app.state.settings.startHour;
+    form.querySelector('[name=endHour]').value = app.state.settings.endHour;
 
-            // Show invite code
-            const codeEl = document.getElementById('family-invite-code');
-            if (codeEl && app.state.family) {
-                codeEl.textContent = app.state.family.invite_code || 'N/A';
-            }
-        },
-        changeWeek: function (dir) { app.state.currentWeekOffset += dir; app.render(); },
-        gotoToday: function () { app.state.currentWeekOffset = 0; app.render(); },
-        onAddSidebarItem: function () {
-            if (app.state.view === 'calendar') {
-                app.ui.openModal('member');
-                document.getElementById('member-modal-title').textContent = 'New Member';
-                document.getElementById('btn-delete-member').style.display = 'none';
-                var form = document.getElementById('form-member');
-                form.reset(); form.querySelector('[name=id]').value = '';
-            } else {
-                app.ui.openModal('store');
-                document.getElementById('store-modal-title').textContent = 'New List';
-                document.getElementById('btn-delete-store').style.display = 'none';
-                var form = document.getElementById('form-store');
-                form.reset(); form.querySelector('[name=id]').value = '';
-            }
-        },
-        onAddNewItem: function () {
-            if (app.state.view === 'calendar') {
-                app.handlers.onCellClick(new Date(), 12);
-            } else {
-                app.handlers.onAddSidebarItem();
-            }
-        },
-        onEditStore: function (s) {
-            app.ui.openModal('store');
-            document.getElementById('store-modal-title').textContent = 'Edit List';
-            document.getElementById('btn-delete-store').style.display = 'block';
-            var form = document.getElementById('form-store');
-            form.querySelector('[name=id]').value = s.id;
-            form.querySelector('[name=name]').value = s.name;
-        },
-        deleteStoreAction: function () {
-            var id = document.getElementById('form-store').querySelector('[name=id]').value;
-            if (id) {
-                app.handlers.deleteStore(id);
-                app.ui.closeModals();
-            }
-        },
-        onEditMember: function (m) {
-            app.ui.openModal('member');
-            document.getElementById('member-modal-title').textContent = 'Edit Member';
-            document.getElementById('btn-delete-member').style.display = 'block';
-            var form = document.getElementById('form-member');
-            form.querySelector('[name=id]').value = m.id;
-            form.querySelector('[name=name]').value = m.name;
-            form.querySelector('[name=color]').value = m.color;
-        },
-        deleteMemberConfirm: function (id) {
-            if (confirm('Delete this family member?')) {
-                this.deleteMember(id);
-            }
-        },
-        deleteMember: function (manualId) {
-            var id = manualId || document.getElementById('form-member').querySelector('[name=id]').value;
-            if (!id) return;
-            app.api.deleteMember(id);
-            if (app.state.currentUser && app.state.currentUser.id === id) app.state.currentUser = null;
+    // Show invite code
+    const codeEl = document.getElementById('family-invite-code');
+    if (codeEl && app.state.family) {
+        codeEl.textContent = app.state.family.invite_code || 'N/A';
+    }
+},
+changeWeek: function (dir) { app.state.currentWeekOffset += dir; app.render(); },
+gotoToday: function () { app.state.currentWeekOffset = 0; app.render(); },
+onAddSidebarItem: function () {
+    if (app.state.view === 'calendar') {
+        app.ui.openModal('member');
+        document.getElementById('member-modal-title').textContent = 'New Member';
+        document.getElementById('btn-delete-member').style.display = 'none';
+        var form = document.getElementById('form-member');
+        form.reset(); form.querySelector('[name=id]').value = '';
+    } else {
+        app.ui.openModal('store');
+        document.getElementById('store-modal-title').textContent = 'New List';
+        document.getElementById('btn-delete-store').style.display = 'none';
+        var form = document.getElementById('form-store');
+        form.reset(); form.querySelector('[name=id]').value = '';
+    }
+},
+onAddNewItem: function () {
+    if (app.state.view === 'calendar') {
+        app.handlers.onCellClick(new Date(), 12);
+    } else {
+        app.handlers.onAddSidebarItem();
+    }
+},
+onEditStore: function (s) {
+    app.ui.openModal('store');
+    document.getElementById('store-modal-title').textContent = 'Edit List';
+    document.getElementById('btn-delete-store').style.display = 'block';
+    var form = document.getElementById('form-store');
+    form.querySelector('[name=id]').value = s.id;
+    form.querySelector('[name=name]').value = s.name;
+},
+deleteStoreAction: function () {
+    var id = document.getElementById('form-store').querySelector('[name=id]').value;
+    if (id) {
+        app.handlers.deleteStore(id);
+        app.ui.closeModals();
+    }
+},
+onEditMember: function (m) {
+    app.ui.openModal('member');
+    document.getElementById('member-modal-title').textContent = 'Edit Member';
+    document.getElementById('btn-delete-member').style.display = 'block';
+    var form = document.getElementById('form-member');
+    form.querySelector('[name=id]').value = m.id;
+    form.querySelector('[name=name]').value = m.name;
+    form.querySelector('[name=color]').value = m.color;
+},
+deleteMemberConfirm: function (id) {
+    if (confirm('Delete this family member?')) {
+        this.deleteMember(id);
+    }
+},
+deleteMember: function (manualId) {
+    var id = manualId || document.getElementById('form-member').querySelector('[name=id]').value;
+    if (!id) return;
+    app.api.deleteMember(id);
+    if (app.state.currentUser && app.state.currentUser.id === id) app.state.currentUser = null;
+    app.ui.closeModals();
+},
+onCellClick: function (d, h) {
+    app.ui.openModal('appointment');
+    document.getElementById('btn-delete-appt').style.display = 'none';
+    var form = document.getElementById('form-appointment');
+    form.reset(); form.querySelector('[name=id]').value = '';
+
+    // Clean logic for selecting self
+    var select = document.getElementById('appt-member-select'); select.innerHTML = '';
+    for (var i = 0; i < app.state.members.length; i++) {
+        var m = app.state.members[i];
+        var opt = document.createElement('option'); opt.value = m.id; opt.textContent = m.name;
+        if (app.state.selectedMemberId && m.id === app.state.selectedMemberId) opt.selected = true;
+        else if (!app.state.selectedMemberId && app.state.currentUser && m.id === app.state.currentUser.id) opt.selected = true;
+        select.appendChild(opt);
+    }
+    form.querySelector('[name=date]').value = d.toISOString().split('T')[0];
+    var timeStr = (h < 10 ? '0' + h : h) + ':00'; form.querySelector('[name=time]').value = timeStr;
+    form.querySelector('[name=repeatType]').value = 'none';
+    app.ui.toggleRepeatUI('none');
+    form.querySelector('[name=repeatFrequency]').value = 4;
+    form.querySelector('[name=title]').focus();
+},
+onEditAppointment: function (appt, occurrenceDate) {
+    app.ui.openModal('appointment');
+    document.getElementById('btn-delete-appt').style.display = 'block';
+    var form = document.getElementById('form-appointment');
+    form.querySelector('[name=id]').value = appt.id;
+    form.querySelector('[name=occurrenceDate]').value = occurrenceDate ? occurrenceDate.toISOString().split('T')[0] : '';
+    form.querySelector('[name=title]').value = appt.title;
+    form.querySelector('[name=date]').value = appt.date;
+    form.querySelector('[name=time]').value = appt.time;
+    form.querySelector('[name=comment]').value = appt.comment || '';
+    form.querySelector('[name=repeatType]').value = appt.repeatType || 'none';
+    app.ui.toggleRepeatUI(appt.repeatType || 'none'); // Fix logic to show if active
+
+    var freq = appt.repeatFrequency || 1;
+    var isCustom = (freq > 4);
+    var btns = document.querySelectorAll('#repeat-freq-btns .group-btn');
+    btns.forEach(function (b) {
+        b.classList.remove('active');
+        if (isCustom && b.getAttribute('data-val') === 'custom') b.classList.add('active');
+        if (!isCustom && b.getAttribute('data-val') == freq) b.classList.add('active');
+    });
+    document.getElementById('repeat-frequency-input').style.display = isCustom ? 'block' : 'none';
+
+    var select = document.getElementById('appt-member-select'); select.innerHTML = '';
+    for (var i = 0; i < app.state.members.length; i++) {
+        var m = app.state.members[i];
+        var opt = document.createElement('option'); opt.value = m.id; opt.textContent = m.name;
+        if (m.id === appt.memberId) opt.selected = true;
+        select.appendChild(opt);
+    }
+},
+deleteAppointment: function () {
+    var form = document.getElementById('form-appointment');
+    var id = form.querySelector('[name=id]').value;
+    // Simplified delete for now (no recurrence advanced logic)
+    if (id) app.api.deleteAppointment(id);
+    app.ui.closeModals();
+},
+deleteStore: function (id) {
+    app.ui.showChoiceModal('Delete List', 'Delete this entire list and all its items?', [{
+        label: 'Delete Everything',
+        danger: true,
+        action: function () {
+            app.api.deleteStore(id);
+            if (app.state.selectedStoreId === id) app.state.selectedStoreId = (app.state.storeTypes[0] ? app.state.storeTypes[0].id : null);
             app.ui.closeModals();
-        },
-        onCellClick: function (d, h) {
-            app.ui.openModal('appointment');
-            document.getElementById('btn-delete-appt').style.display = 'none';
-            var form = document.getElementById('form-appointment');
-            form.reset(); form.querySelector('[name=id]').value = '';
+        }
+    }]);
+},
+moveStore: function (idx, dir) {
+    // Not easily supported in granular DB without position column update
+    // Skipping for first pass
+},
+addHeading: function () {
+    app.ui.openModal('heading');
+    var form = document.getElementById('form-heading');
+    if (form) {
+        form.reset();
+        setTimeout(function () { form.querySelector('[name=name]').focus(); }, 100);
+    }
+},
+onQuickAddItem: function (sid) {
+    var input = document.getElementById('shopping-input');
+    if (input && input.value.trim()) {
+        var newItem = {
+            storeId: sid,
+            text: input.value.trim(),
+            checked: false,
+            isHeader: false
+        };
 
-            // Clean logic for selecting self
-            var select = document.getElementById('appt-member-select'); select.innerHTML = '';
-            for (var i = 0; i < app.state.members.length; i++) {
-                var m = app.state.members[i];
-                var opt = document.createElement('option'); opt.value = m.id; opt.textContent = m.name;
-                if (app.state.selectedMemberId && m.id === app.state.selectedMemberId) opt.selected = true;
-                else if (!app.state.selectedMemberId && app.state.currentUser && m.id === app.state.currentUser.id) opt.selected = true;
-                select.appendChild(opt);
-            }
-            form.querySelector('[name=date]').value = d.toISOString().split('T')[0];
-            var timeStr = (h < 10 ? '0' + h : h) + ':00'; form.querySelector('[name=time]').value = timeStr;
-            form.querySelector('[name=repeatType]').value = 'none';
-            app.ui.toggleRepeatUI('none');
-            form.querySelector('[name=repeatFrequency]').value = 4;
-            form.querySelector('[name=title]').focus();
-        },
-        onEditAppointment: function (appt, occurrenceDate) {
-            app.ui.openModal('appointment');
-            document.getElementById('btn-delete-appt').style.display = 'block';
-            var form = document.getElementById('form-appointment');
-            form.querySelector('[name=id]').value = appt.id;
-            form.querySelector('[name=occurrenceDate]').value = occurrenceDate ? occurrenceDate.toISOString().split('T')[0] : '';
-            form.querySelector('[name=title]').value = appt.title;
-            form.querySelector('[name=date]').value = appt.date;
-            form.querySelector('[name=time]').value = appt.time;
-            form.querySelector('[name=comment]').value = appt.comment || '';
-            form.querySelector('[name=repeatType]').value = appt.repeatType || 'none';
-            app.ui.toggleRepeatUI(appt.repeatType || 'none'); // Fix logic to show if active
-
-            var freq = appt.repeatFrequency || 1;
-            var isCustom = (freq > 4);
-            var btns = document.querySelectorAll('#repeat-freq-btns .group-btn');
-            btns.forEach(function (b) {
-                b.classList.remove('active');
-                if (isCustom && b.getAttribute('data-val') === 'custom') b.classList.add('active');
-                if (!isCustom && b.getAttribute('data-val') == freq) b.classList.add('active');
-            });
-            document.getElementById('repeat-frequency-input').style.display = isCustom ? 'block' : 'none';
-
-            var select = document.getElementById('appt-member-select'); select.innerHTML = '';
-            for (var i = 0; i < app.state.members.length; i++) {
-                var m = app.state.members[i];
-                var opt = document.createElement('option'); opt.value = m.id; opt.textContent = m.name;
-                if (m.id === appt.memberId) opt.selected = true;
-                select.appendChild(opt);
-            }
-        },
-        deleteAppointment: function () {
-            var form = document.getElementById('form-appointment');
-            var id = form.querySelector('[name=id]').value;
-            // Simplified delete for now (no recurrence advanced logic)
-            if (id) app.api.deleteAppointment(id);
-            app.ui.closeModals();
-        },
-        deleteStore: function (id) {
-            app.ui.showChoiceModal('Delete List', 'Delete this entire list and all its items?', [{
-                label: 'Delete Everything',
-                danger: true,
-                action: function () {
-                    app.api.deleteStore(id);
-                    if (app.state.selectedStoreId === id) app.state.selectedStoreId = (app.state.storeTypes[0] ? app.state.storeTypes[0].id : null);
-                    app.ui.closeModals();
+        // If a header is selected, try to insert it after that header/group
+        var insertIndex = -1;
+        if (app.state.selectedHeaderId) {
+            var items = app.state.groceryItems;
+            var headerIdx = items.findIndex(i => i.id === app.state.selectedHeaderId);
+            if (headerIdx !== -1) {
+                // Find end of this group
+                var endIdx = headerIdx;
+                for (var i = headerIdx + 1; i < items.length; i++) {
+                    if (items[i].isHeader) break;
+                    endIdx = i;
                 }
-            }]);
-        },
-        moveStore: function (idx, dir) {
-            // Not easily supported in granular DB without position column update
-            // Skipping for first pass
-        },
-        addHeading: function () {
-            app.ui.openModal('heading');
-            var form = document.getElementById('form-heading');
-            if (form) {
-                form.reset();
-                setTimeout(function () { form.querySelector('[name=name]').focus(); }, 100);
+                insertIndex = endIdx + 1;
             }
-        },
-        onQuickAddItem: function (sid) {
-            var input = document.getElementById('shopping-input');
-            if (input && input.value.trim()) {
-                var newItem = {
-                    storeId: sid,
-                    text: input.value.trim(),
-                    checked: false,
-                    isHeader: false
-                };
+        }
 
-                // If a header is selected, try to insert it after that header/group
-                var insertIndex = -1;
-                if (app.state.selectedHeaderId) {
-                    var items = app.state.groceryItems;
-                    var headerIdx = items.findIndex(i => i.id === app.state.selectedHeaderId);
-                    if (headerIdx !== -1) {
-                        // Find end of this group
-                        var endIdx = headerIdx;
-                        for (var i = headerIdx + 1; i < items.length; i++) {
-                            if (items[i].isHeader) break;
-                            endIdx = i;
+        app.api.addGroceryItem(newItem, insertIndex);
+        input.value = '';
+        app.state.currentInputValue = '';
+        input.focus();
+    }
+},
+toggleItem: function (id) {
+    var item = app.state.groceryItems.find(i => i.id === id);
+    if (item) app.api.updateGroceryItem(id, { checked: !item.checked });
+},
+deleteItem: function (id) {
+    app.api.deleteGroceryItem(id);
+},
+editItemText: function (id) {
+    var item = app.state.groceryItems.find(i => i.id === id);
+    if (!item) return;
+
+    // Store the item ID for the form handler
+    app.state.editingItemId = id;
+
+    // Open modal and populate
+    app.ui.openModal('edit-item');
+    document.getElementById('edit-item-title').textContent = item.isHeader ? 'Edit Heading' : 'Edit Item';
+    document.getElementById('edit-item-text').value = item.text;
+
+    // Show options only for headers
+    var optionsDiv = document.getElementById('edit-item-options');
+    if (item.isHeader) {
+        optionsDiv.style.display = 'block';
+    } else {
+        optionsDiv.style.display = 'none';
+    }
+
+    // Focus the input
+    setTimeout(() => document.getElementById('edit-item-text').focus(), 100);
+},
+deleteAllItems: function () {
+    if (!app.state.editingItemId) return;
+    var item = app.state.groceryItems.find(i => i.id === app.state.editingItemId);
+    if (!item || !item.isHeader) return;
+
+    if (!confirm("Delete all items under this heading?")) return;
+
+    var storeItems = app.state.groceryItems.filter(i => i.storeId === item.storeId);
+    var headIdx = storeItems.findIndex(i => i.id === item.id);
+    if (headIdx === -1) return;
+
+    var nextHeadIdx = storeItems.findIndex((i, idx) => idx > headIdx && i.isHeader);
+    var endIdx = nextHeadIdx === -1 ? storeItems.length : nextHeadIdx;
+
+    for (var i = headIdx + 1; i < endIdx; i++) {
+        if (!storeItems[i].isHeader) {
+            app.api.deleteGroceryItem(storeItems[i].id);
+        }
+    }
+
+    app.ui.closeModals();
+},
+deleteClearedItems: function () {
+    if (!app.state.editingItemId) return;
+    var item = app.state.groceryItems.find(i => i.id === app.state.editingItemId);
+    if (!item || !item.isHeader) return;
+
+    if (!confirm("Delete all checked items under this heading?")) return;
+
+    var storeItems = app.state.groceryItems.filter(i => i.storeId === item.storeId);
+    var headIdx = storeItems.findIndex(i => i.id === item.id);
+    if (headIdx === -1) return;
+
+    var nextHeadIdx = storeItems.findIndex((i, idx) => idx > headIdx && i.isHeader);
+    var endIdx = nextHeadIdx === -1 ? storeItems.length : nextHeadIdx;
+
+    for (var i = headIdx + 1; i < endIdx; i++) {
+        if (!storeItems[i].isHeader && storeItems[i].checked) {
+            app.api.deleteGroceryItem(storeItems[i].id);
+        }
+    }
+
+    app.ui.closeModals();
+},
+pasteItems: async function (storeId) {
+    try {
+        var text = await navigator.clipboard.readText();
+        if (!text || !text.trim()) {
+            alert('Clipboard is empty!');
+            return;
+        }
+
+        // Check if text has multiple lines
+        var lines = text.split('\n').map(l => l.trim()).filter(l => l);
+
+        if (lines.length === 1) {
+            // Only one line, just add it
+            app.api.addGroceryItem({
+                storeId: storeId,
+                text: lines[0],
+                checked: false,
+                isHeader: false
+            });
+        } else {
+            // Multiple lines - show choice
+            app.ui.showChoice(
+                'Paste Items',
+                'Found ' + lines.length + ' lines. How do you want to paste?',
+                [
+                    {
+                        label: 'As One Item',
+                        icon: 'fa-solid fa-minus',
+                        action: function () {
+                            app.api.addGroceryItem({
+                                storeId: storeId,
+                                text: text.trim(),
+                                checked: false,
+                                isHeader: false
+                            });
                         }
-                        insertIndex = endIdx + 1;
+                    },
+                    {
+                        label: 'Split by Lines (' + lines.length + ' items)',
+                        icon: 'fa-solid fa-list',
+                        action: function () {
+                            lines.forEach(function (line) {
+                                app.api.addGroceryItem({
+                                    storeId: storeId,
+                                    text: line,
+                                    checked: false,
+                                    isHeader: false
+                                });
+                            });
+                        }
                     }
-                }
-
-                app.api.addGroceryItem(newItem, insertIndex);
-                input.value = '';
-                app.state.currentInputValue = '';
-                input.focus();
-            }
-        },
-        toggleItem: function (id) {
-            var item = app.state.groceryItems.find(i => i.id === id);
-            if (item) app.api.updateGroceryItem(id, { checked: !item.checked });
-        },
-        deleteItem: function (id) {
-            app.api.deleteGroceryItem(id);
-        },
-        editItemText: function (id) {
-            var item = app.state.groceryItems.find(i => i.id === id);
-            if (!item) return;
-
-            // Store the item ID for the form handler
-            app.state.editingItemId = id;
-
-            // Open modal and populate
-            app.ui.openModal('edit-item');
-            document.getElementById('edit-item-title').textContent = item.isHeader ? 'Edit Heading' : 'Edit Item';
-            document.getElementById('edit-item-text').value = item.text;
-
-            // Show options only for headers
-            var optionsDiv = document.getElementById('edit-item-options');
-            if (item.isHeader) {
-                optionsDiv.style.display = 'block';
-            } else {
-                optionsDiv.style.display = 'none';
-            }
-
-            // Focus the input
-            setTimeout(() => document.getElementById('edit-item-text').focus(), 100);
-        },
-        deleteAllItems: function () {
-            if (!app.state.editingItemId) return;
-            var item = app.state.groceryItems.find(i => i.id === app.state.editingItemId);
-            if (!item || !item.isHeader) return;
-
-            if (!confirm("Delete all items under this heading?")) return;
-
-            var storeItems = app.state.groceryItems.filter(i => i.storeId === item.storeId);
-            var headIdx = storeItems.findIndex(i => i.id === item.id);
-            if (headIdx === -1) return;
-
-            var nextHeadIdx = storeItems.findIndex((i, idx) => idx > headIdx && i.isHeader);
-            var endIdx = nextHeadIdx === -1 ? storeItems.length : nextHeadIdx;
-
-            for (var i = headIdx + 1; i < endIdx; i++) {
-                if (!storeItems[i].isHeader) {
-                    app.api.deleteGroceryItem(storeItems[i].id);
-                }
-            }
-
-            app.ui.closeModals();
-        },
-        deleteClearedItems: function () {
-            if (!app.state.editingItemId) return;
-            var item = app.state.groceryItems.find(i => i.id === app.state.editingItemId);
-            if (!item || !item.isHeader) return;
-
-            if (!confirm("Delete all checked items under this heading?")) return;
-
-            var storeItems = app.state.groceryItems.filter(i => i.storeId === item.storeId);
-            var headIdx = storeItems.findIndex(i => i.id === item.id);
-            if (headIdx === -1) return;
-
-            var nextHeadIdx = storeItems.findIndex((i, idx) => idx > headIdx && i.isHeader);
-            var endIdx = nextHeadIdx === -1 ? storeItems.length : nextHeadIdx;
-
-            for (var i = headIdx + 1; i < endIdx; i++) {
-                if (!storeItems[i].isHeader && storeItems[i].checked) {
-                    app.api.deleteGroceryItem(storeItems[i].id);
-                }
-            }
-
-            app.ui.closeModals();
-        },
-        pasteItems: async function (storeId) {
-            try {
-                var text = await navigator.clipboard.readText();
-                if (!text || !text.trim()) {
-                    alert('Clipboard is empty!');
-                    return;
-                }
-
-                // Check if text has multiple lines
-                var lines = text.split('\n').map(l => l.trim()).filter(l => l);
-
-                if (lines.length === 1) {
-                    // Only one line, just add it
-                    app.api.addGroceryItem({
-                        storeId: storeId,
-                        text: lines[0],
-                        checked: false,
-                        isHeader: false
-                    });
-                } else {
-                    // Multiple lines - show choice
-                    app.ui.showChoice(
-                        'Paste Items',
-                        'Found ' + lines.length + ' lines. How do you want to paste?',
-                        [
-                            {
-                                label: 'As One Item',
-                                icon: 'fa-solid fa-minus',
-                                action: function () {
-                                    app.api.addGroceryItem({
-                                        storeId: storeId,
-                                        text: text.trim(),
-                                        checked: false,
-                                        isHeader: false
-                                    });
-                                }
-                            },
-                            {
-                                label: 'Split by Lines (' + lines.length + ' items)',
-                                icon: 'fa-solid fa-list',
-                                action: function () {
-                                    lines.forEach(function (line) {
-                                        app.api.addGroceryItem({
-                                            storeId: storeId,
-                                            text: line,
-                                            checked: false,
-                                            isHeader: false
-                                        });
-                                    });
-                                }
-                            }
-                        ]
-                    );
-                }
-            } catch (err) {
-                console.error('Paste error:', err);
-                alert('Could not read clipboard. Please make sure you have granted clipboard permissions.');
-            }
-        },
-        copyCalendarSyncLink: function () {
-            var url = document.getElementById('calendar-sync-url').value;
-            if (url && url !== 'Loading link...') {
-                navigator.clipboard.writeText(url)
-                    .then(() => alert('Calendar sync link copied!'))
-                    .catch(err => {
-                        console.error('Copy failed:', err);
-                        alert('Could not copy link automatically. Please select the text and copy manually.');
-                    });
-            }
-        },
-        deleteAll: function (sid, headId) {
-            if (!confirm("Are you sure you want to delete this heading and ALL items inside it?")) return;
-
-            var storeItems = app.state.groceryItems.filter(function (i) { return i.storeId === sid; });
-            var toDelete = [];
-            var foundHeader = false;
-
-            for (var i = 0; i < storeItems.length; i++) {
-                var item = storeItems[i];
-                if (item.id === headId) {
-                    foundHeader = true;
-                    toDelete.push(item.id);
-                } else if (foundHeader) {
-                    if (item.isHeader) break; // Next header reached
-                    toDelete.push(item.id);
-                }
-            }
-
-            if (toDelete.length > 0) {
-                app.api.deleteGroceryItems(toDelete);
-            }
-        },
-        clearCompleted: function (sid, headId) {
-            var storeItems = app.state.groceryItems.filter(function (i) { return i.storeId === sid; });
-            var toDelete = [];
-            var foundHeader = false;
-
-            for (var i = 0; i < storeItems.length; i++) {
-                var item = storeItems[i];
-                if (item.id === headId) {
-                    foundHeader = true;
-                } else if (foundHeader) {
-                    if (item.isHeader) break;
-                    if (item.checked) toDelete.push(item.id);
-                }
-            }
-
-            if (toDelete.length > 0) {
-                app.api.deleteGroceryItems(toDelete);
-            } else {
-                alert("No checked items found under this heading.");
-            }
-        },
-        showShoppingMenu: function (e, sid, headId) {
-            e.stopPropagation(); e.preventDefault();
-            var existing = document.querySelector('.context-menu');
-            if (existing) existing.remove();
-
-            var menu = document.createElement('div');
-            menu.className = 'context-menu';
-
-            var items = [
-                { text: 'Clear Completed', icon: 'fa-check-double', action: function () { app.handlers.clearCompleted(sid, headId); } },
-                { text: 'Delete All', icon: 'fa-trash-can', danger: true, action: function () { app.handlers.deleteAll(sid, headId); } }
-            ];
-
-            items.forEach(function (item) {
-                var el = document.createElement('div');
-                el.className = 'menu-item' + (item.danger ? ' danger' : '');
-                el.innerHTML = '<i class="fa-solid ' + item.icon + '"></i>' + item.text;
-                el.onclick = function () { item.action(); menu.remove(); };
-                menu.appendChild(el);
+                ]
+            );
+        }
+    } catch (err) {
+        console.error('Paste error:', err);
+        alert('Could not read clipboard. Please make sure you have granted clipboard permissions.');
+    }
+},
+copyCalendarSyncLink: function () {
+    var url = document.getElementById('calendar-sync-url').value;
+    if (url && url !== 'Loading link...') {
+        navigator.clipboard.writeText(url)
+            .then(() => alert('Calendar sync link copied!'))
+            .catch(err => {
+                console.error('Copy failed:', err);
+                alert('Could not copy link automatically. Please select the text and copy manually.');
             });
+    }
+},
+deleteAll: function (sid, headId) {
+    if (!confirm("Are you sure you want to delete items?")) return;
 
-            document.body.appendChild(menu);
+    var storeItems = app.state.groceryItems.filter(function (i) { return i.storeId === sid; });
+    var toDelete = [];
 
-            var rect = e.target.getBoundingClientRect();
-            menu.style.top = rect.bottom + 5 + 'px';
-            menu.style.right = (window.innerWidth - rect.right) + 'px';
-
-            var closer = function () { menu.remove(); document.removeEventListener('click', closer); };
-            setTimeout(function () { document.addEventListener('click', closer); }, 10);
-        },
-        reorderItems: function () {
-            var listEl = document.getElementById('shopping-list-items');
-            if (!listEl) return;
-
-            var newOrderIds = Array.prototype.slice.call(listEl.children).map(function (el) { return el.getAttribute('data-id'); });
-            var sid = app.state.selectedStoreId;
-            var updates = [];
-
-            console.log('🔄 Reordering items. New order IDs:', newOrderIds);
-
-            // Reorder the full global list to maintain consistency
-            // Strategy: 
-            // 1. Get items NOT in this store
-            // 2. Get items IN this store and sort them according to newOrderIds
-            // 3. Combine them
-
-            var otherItems = app.state.groceryItems.filter(i => i.storeId !== sid);
-            var thisStoreItems = app.state.groceryItems.filter(i => i.storeId === sid);
-            var sortedThisStore = newOrderIds.map((id, idx) => {
-                var item = thisStoreItems.find(i => i.id === id);
-                if (item) {
-                    item.position = idx;
-                    // Include all required fields to satisfy NOT NULL constraints
-                    updates.push({
-                        id: item.id,
-                        position: idx,
-                        family_id: item.family_id,
-                        text: item.text,
-                        store_id: item.storeId,
-                        checked: item.checked,
-                        is_header: item.isHeader
-                    });
-                }
-                return item;
-            }).filter(Boolean);
-
-            app.state.groceryItems = [...otherItems, ...sortedThisStore];
-
-            console.log('📦 Updates to send:', updates);
-
-            if (updates.length > 0) {
-                app.api.bulkUpdatePositions('grocery_items', updates);
+    if (headId) {
+        // Delete everything under specific header
+        var foundHeader = false;
+        for (var i = 0; i < storeItems.length; i++) {
+            var item = storeItems[i];
+            if (item.id === headId) {
+                foundHeader = true;
+                toDelete.push(item.id);
+            } else if (foundHeader) {
+                if (item.isHeader) break; // Next header reached
+                toDelete.push(item.id);
             }
+        }
+    } else {
+        // Delete ALL items in the store
+        toDelete = storeItems.map(i => i.id);
+    }
 
-            app.renderShoppingListItems();
-        },
-        onDragStart: function (e, appt, occurrenceDate) {
-            console.log('🎯 Drag started:', appt.title, 'on', occurrenceDate);
-            // Store the appointment being dragged
-            app.state.draggingAppt = appt;
-            app.state.draggingOccurrenceDate = occurrenceDate;
-            e.dataTransfer.effectAllowed = 'move';
-            e.dataTransfer.setData('text/html', e.target.innerHTML);
-        },
-        onDrop: function (e, date, hour) {
-            console.log('📍 Drop triggered on:', date, 'at hour:', hour);
-            e.preventDefault();
-            if (!app.state.draggingAppt) {
-                console.log('⚠️ No appointment being dragged!');
-                return;
+    if (toDelete.length > 0) {
+        app.api.deleteGroceryItems(toDelete);
+    }
+},
+clearCompleted: function (sid, headId) {
+    var storeItems = app.state.groceryItems.filter(function (i) { return i.storeId === sid; });
+    var toDelete = [];
+
+    if (headId) {
+        // Clear completed under specific header
+        var foundHeader = false;
+        for (var i = 0; i < storeItems.length; i++) {
+            var item = storeItems[i];
+            if (item.id === headId) {
+                foundHeader = true;
+            } else if (foundHeader) {
+                if (item.isHeader) break;
+                if (item.checked) toDelete.push(item.id);
             }
+        }
+    } else {
+        // Clear ALL completed items in the store
+        toDelete = storeItems.filter(i => i.checked && !i.isHeader).map(i => i.id);
+    }
 
-            var appt = app.state.draggingAppt;
-            var occurrenceDate = app.state.draggingOccurrenceDate;
+    if (toDelete.length > 0) {
+        app.api.deleteGroceryItems(toDelete);
+    } else {
+        alert("No checked items found.");
+    }
+},
+showShoppingMenu: function (e, sid, headId) {
+    e.stopPropagation(); e.preventDefault();
+    var existing = document.querySelector('.context-menu');
+    if (existing) existing.remove();
 
-            // Format the new date (use local timezone, not UTC)
-            var newDate = new Date(date);
-            var year = newDate.getFullYear();
-            var month = String(newDate.getMonth() + 1).padStart(2, '0');
-            var day = String(newDate.getDate()).padStart(2, '0');
-            var newDateStr = year + '-' + month + '-' + day;
+    var menu = document.createElement('div');
+    menu.className = 'context-menu';
 
-            // Format the new time
-            var newTime = hour + ':00';
+    var items = [
+        { text: 'Clear Completed', icon: 'fa-check-double', action: function () { app.handlers.clearCompleted(sid, headId); } },
+        { text: 'Delete All', icon: 'fa-trash-can', danger: true, action: function () { app.handlers.deleteAll(sid, headId); } }
+    ];
 
-            // If it's a repeating appointment, add an exception for the old occurrence
-            if (appt.repeatType && appt.repeatType !== 'none') {
-                var oldDate = new Date(occurrenceDate);
-                var oldYear = oldDate.getFullYear();
-                var oldMonth = String(oldDate.getMonth() + 1).padStart(2, '0');
-                var oldDay = String(oldDate.getDate()).padStart(2, '0');
-                var oldDateStr = oldYear + '-' + oldMonth + '-' + oldDay;
-                var exceptions = appt.exceptions || [];
-                if (exceptions.indexOf(oldDateStr) === -1) {
-                    exceptions.push(oldDateStr);
-                }
+    items.forEach(function (item) {
+        var el = document.createElement('div');
+        el.className = 'menu-item' + (item.danger ? ' danger' : '');
+        el.innerHTML = '<i class="fa-solid ' + item.icon + '"></i>' + item.text;
+        el.onclick = function () { item.action(); menu.remove(); };
+        menu.appendChild(el);
+    });
 
-                // Create a new one-time appointment for the new date/time
-                app.api.addAppointment({
-                    memberId: appt.memberId,
-                    title: appt.title,
-                    date: newDateStr,
-                    time: newTime,
-                    comment: appt.comment,
-                    repeatType: 'none',
-                    repeatFrequency: 1
-                });
+    document.body.appendChild(menu);
 
-                // Update the original to add the exception
-                app.api.updateAppointment(appt.id, { exceptions: exceptions });
-            } else {
-                // Simple move for non-repeating appointments
-                app.api.updateAppointment(appt.id, {
-                    date: newDateStr,
-                    time: newTime
-                });
+    var rect = e.target.getBoundingClientRect();
+    menu.style.top = rect.bottom + 5 + 'px';
+    menu.style.right = (window.innerWidth - rect.right) + 'px';
+
+    var closer = function () { menu.remove(); document.removeEventListener('click', closer); };
+    setTimeout(function () { document.addEventListener('click', closer); }, 10);
+},
+reorderItems: function () {
+    var listEl = document.getElementById('shopping-list-items');
+    if (!listEl) return;
+
+    var newOrderIds = Array.prototype.slice.call(listEl.children).map(function (el) { return el.getAttribute('data-id'); });
+    var sid = app.state.selectedStoreId;
+    var updates = [];
+
+    console.log('🔄 Reordering items. New order IDs:', newOrderIds);
+
+    // Reorder the full global list to maintain consistency
+    // Strategy: 
+    // 1. Get items NOT in this store
+    // 2. Get items IN this store and sort them according to newOrderIds
+    // 3. Combine them
+
+    var otherItems = app.state.groceryItems.filter(i => i.storeId !== sid);
+    var thisStoreItems = app.state.groceryItems.filter(i => i.storeId === sid);
+    var sortedThisStore = newOrderIds.map((id, idx) => {
+        var item = thisStoreItems.find(i => i.id === id);
+        if (item) {
+            item.position = idx;
+            // Include all required fields to satisfy NOT NULL constraints
+            updates.push({
+                id: item.id,
+                position: idx,
+                family_id: item.family_id,
+                text: item.text,
+                store_id: item.storeId,
+                checked: item.checked,
+                is_header: item.isHeader
+            });
+        }
+        return item;
+    }).filter(Boolean);
+
+    app.state.groceryItems = [...otherItems, ...sortedThisStore];
+
+    console.log('📦 Updates to send:', updates);
+
+    if (updates.length > 0) {
+        app.api.bulkUpdatePositions('grocery_items', updates);
+    }
+
+    app.renderShoppingListItems();
+},
+onDragStart: function (e, appt, occurrenceDate) {
+    console.log('🎯 Drag started:', appt.title, 'on', occurrenceDate);
+    // Store the appointment being dragged
+    app.state.draggingAppt = appt;
+    app.state.draggingOccurrenceDate = occurrenceDate;
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/html', e.target.innerHTML);
+},
+onDrop: function (e, date, hour) {
+    console.log('📍 Drop triggered on:', date, 'at hour:', hour);
+    e.preventDefault();
+    if (!app.state.draggingAppt) {
+        console.log('⚠️ No appointment being dragged!');
+        return;
+    }
+
+    var appt = app.state.draggingAppt;
+    var occurrenceDate = app.state.draggingOccurrenceDate;
+
+    // Format the new date (use local timezone, not UTC)
+    var newDate = new Date(date);
+    var year = newDate.getFullYear();
+    var month = String(newDate.getMonth() + 1).padStart(2, '0');
+    var day = String(newDate.getDate()).padStart(2, '0');
+    var newDateStr = year + '-' + month + '-' + day;
+
+    // Format the new time
+    var newTime = hour + ':00';
+
+    // If it's a repeating appointment, add an exception for the old occurrence
+    if (appt.repeatType && appt.repeatType !== 'none') {
+        var oldDate = new Date(occurrenceDate);
+        var oldYear = oldDate.getFullYear();
+        var oldMonth = String(oldDate.getMonth() + 1).padStart(2, '0');
+        var oldDay = String(oldDate.getDate()).padStart(2, '0');
+        var oldDateStr = oldYear + '-' + oldMonth + '-' + oldDay;
+        var exceptions = appt.exceptions || [];
+        if (exceptions.indexOf(oldDateStr) === -1) {
+            exceptions.push(oldDateStr);
+        }
+
+        // Create a new one-time appointment for the new date/time
+        app.api.addAppointment({
+            memberId: appt.memberId,
+            title: appt.title,
+            date: newDateStr,
+            time: newTime,
+            comment: appt.comment,
+            repeatType: 'none',
+            repeatFrequency: 1
+        });
+
+        // Update the original to add the exception
+        app.api.updateAppointment(appt.id, { exceptions: exceptions });
+    } else {
+        // Simple move for non-repeating appointments
+        app.api.updateAppointment(appt.id, {
+            date: newDateStr,
+            time: newTime
+        });
+    }
+
+    console.log('✅ Appointment moved to:', newDateStr, 'at', newTime);
+
+    // Clear drag state
+    app.state.draggingAppt = null;
+    app.state.draggingOccurrenceDate = null;
+},
+isMatchingAppointment: function (appt, cellDate, hObj, sH, eH) {
+    // Keep existing logic
+    var ad = new Date(appt.date);
+    var ah = parseInt(appt.time);
+    var isBaseMatch = (hObj.val === -1 && ah < sH) || (hObj.val === 24 && ah > eH) || (ah === hObj.val);
+    if (!isBaseMatch) return false;
+
+    var dateStr = cellDate.toISOString().split('T')[0];
+    if (appt.exceptions && appt.exceptions.indexOf(dateStr) !== -1) return false;
+
+    if (ad.toDateString() === cellDate.toDateString()) return true;
+    if (!appt.repeatType || appt.repeatType === 'none') return false;
+
+    var dCell = new Date(cellDate); dCell.setHours(0, 0, 0, 0);
+    var dStart = new Date(ad); dStart.setHours(0, 0, 0, 0);
+    if (dCell < dStart) return false;
+
+    var diffDays = Math.floor((dCell - dStart) / (1000 * 60 * 60 * 24));
+    var limit = appt.repeatFrequency || 1;
+
+    if (appt.repeatType === 'weekly') {
+        var isSameDayOfWeek = (dCell.getDay() === dStart.getDay());
+        var weekDiff = Math.floor(diffDays / 7);
+        // "limit" is total weeks (e.g. 1 means only current week)
+        return isSameDayOfWeek && (weekDiff < limit);
+    }
+    if (appt.repeatType === 'monthly') {
+        if (dCell.getDate() !== dStart.getDate()) return false;
+        var monthsDiff = (dCell.getFullYear() - dStart.getFullYear()) * 12 + (dCell.getMonth() - dStart.getMonth());
+        // "limit" is total months
+        return (monthsDiff < limit);
+    }
+    return false;
+},
+showFamilySetup: function () {
+    app.ui.openModal('family-setup');
+},
+showCreateFamily: function () {
+    app.ui.openModal('create-family');
+},
+showJoinFamily: function () {
+    app.ui.openModal('join-family');
+},
+backToFamilySetup: function () {
+    app.ui.openModal('family-setup');
+}
+},
+
+ui: {
+    openModal: function (n) {
+        // Push state for back button handling
+        history.pushState({ modal: n }, '');
+
+        document.getElementById('modal-overlay').classList.remove('hidden');
+        var modals = document.querySelectorAll('.modal');
+        for (var i = 0; i < modals.length; i++) { modals[i].classList.add('hidden'); }
+        var target = document.getElementById('modal-' + n);
+        if (target) target.classList.remove('hidden');
+
+        if (n === 'settings') {
+            var f = document.getElementById('form-settings');
+            f.querySelector('[name=startHour]').value = app.state.settings.startHour || 8;
+            f.querySelector('[name=endHour]').value = app.state.settings.endHour || 20;
+
+            const codeEl = document.getElementById('family-invite-code');
+            if (codeEl) codeEl.textContent = (app.state.family && app.state.family.invite_code) || '------';
+
+            // Set the iCal sync URL
+            const syncUrlEl = document.getElementById('calendar-sync-url');
+            if (syncUrlEl && app.state.familyId) {
+                // Replace with your actual project URL if different
+                const projectUrl = 'https://iaamejzakzludsultmxo.supabase.co';
+                syncUrlEl.value = projectUrl + '/functions/v1/calendar-feed?id=' + app.state.familyId;
             }
-
-            console.log('✅ Appointment moved to:', newDateStr, 'at', newTime);
-
-            // Clear drag state
-            app.state.draggingAppt = null;
-            app.state.draggingOccurrenceDate = null;
-        },
-        isMatchingAppointment: function (appt, cellDate, hObj, sH, eH) {
-            // Keep existing logic
-            var ad = new Date(appt.date);
-            var ah = parseInt(appt.time);
-            var isBaseMatch = (hObj.val === -1 && ah < sH) || (hObj.val === 24 && ah > eH) || (ah === hObj.val);
-            if (!isBaseMatch) return false;
-
-            var dateStr = cellDate.toISOString().split('T')[0];
-            if (appt.exceptions && appt.exceptions.indexOf(dateStr) !== -1) return false;
-
-            if (ad.toDateString() === cellDate.toDateString()) return true;
-            if (!appt.repeatType || appt.repeatType === 'none') return false;
-
-            var dCell = new Date(cellDate); dCell.setHours(0, 0, 0, 0);
-            var dStart = new Date(ad); dStart.setHours(0, 0, 0, 0);
-            if (dCell < dStart) return false;
-
-            var diffDays = Math.floor((dCell - dStart) / (1000 * 60 * 60 * 24));
-            var limit = appt.repeatFrequency || 1;
-
-            if (appt.repeatType === 'weekly') {
-                var isSameDayOfWeek = (dCell.getDay() === dStart.getDay());
-                var weekDiff = Math.floor(diffDays / 7);
-                // "limit" is total weeks (e.g. 1 means only current week)
-                return isSameDayOfWeek && (weekDiff < limit);
-            }
-            if (appt.repeatType === 'monthly') {
-                if (dCell.getDate() !== dStart.getDate()) return false;
-                var monthsDiff = (dCell.getFullYear() - dStart.getFullYear()) * 12 + (dCell.getMonth() - dStart.getMonth());
-                // "limit" is total months
-                return (monthsDiff < limit);
-            }
-            return false;
-        },
-        showFamilySetup: function () {
-            app.ui.openModal('family-setup');
-        },
-        showCreateFamily: function () {
-            app.ui.openModal('create-family');
-        },
-        showJoinFamily: function () {
-            app.ui.openModal('join-family');
-        },
-        backToFamilySetup: function () {
-            app.ui.openModal('family-setup');
         }
     },
+    closeModals: function (skipPop) {
+        if (!app.state.currentUser) return;
+        document.getElementById('modal-overlay').classList.add('hidden');
+        if (!skipPop) history.back();
+    },
+    showChoice: function (title, message, buttons) {
+        // Push state for back button handling
+        history.pushState({ modal: 'choice' }, '');
 
-    ui: {
-        openModal: function (n) {
-            // Push state for back button handling
-            history.pushState({ modal: n }, '');
+        // Use the existing choice modal
+        document.getElementById('modal-overlay').classList.remove('hidden');
+        var modals = document.querySelectorAll('.modal');
+        for (var i = 0; i < modals.length; i++) { modals[i].classList.add('hidden'); }
 
-            document.getElementById('modal-overlay').classList.remove('hidden');
-            var modals = document.querySelectorAll('.modal');
-            for (var i = 0; i < modals.length; i++) { modals[i].classList.add('hidden'); }
-            var target = document.getElementById('modal-' + n);
-            if (target) target.classList.remove('hidden');
+        var modal = document.getElementById('modal-choice');
+        if (!modal) return;
 
-            if (n === 'settings') {
-                var f = document.getElementById('form-settings');
-                f.querySelector('[name=startHour]').value = app.state.settings.startHour || 8;
-                f.querySelector('[name=endHour]').value = app.state.settings.endHour || 20;
+        modal.classList.remove('hidden');
+        document.getElementById('choice-title').textContent = title;
+        document.getElementById('choice-text').textContent = message;
 
-                const codeEl = document.getElementById('family-invite-code');
-                if (codeEl) codeEl.textContent = (app.state.family && app.state.family.invite_code) || '------';
+        var buttonsContainer = document.getElementById('choice-buttons');
+        buttonsContainer.innerHTML = '';
 
-                // Set the iCal sync URL
-                const syncUrlEl = document.getElementById('calendar-sync-url');
-                if (syncUrlEl && app.state.familyId) {
-                    // Replace with your actual project URL if different
-                    const projectUrl = 'https://iaamejzakzludsultmxo.supabase.co';
-                    syncUrlEl.value = projectUrl + '/functions/v1/calendar-feed?id=' + app.state.familyId;
-                }
-            }
-        },
-        closeModals: function (skipPop) {
-            if (!app.state.currentUser) return;
-            document.getElementById('modal-overlay').classList.add('hidden');
-            if (!skipPop) history.back();
-        },
-        showChoice: function (title, message, buttons) {
-            // Push state for back button handling
-            history.pushState({ modal: 'choice' }, '');
+        buttons.forEach(function (btn) {
+            var button = document.createElement('button');
+            button.className = 'btn-primary';
+            button.style.padding = '16px';
+            button.style.fontSize = '1rem';
+            button.style.borderRadius = '12px';
+            button.style.background = 'var(--primary)';
+            button.style.color = 'white';
+            button.style.border = 'none';
+            button.style.cursor = 'pointer';
+            button.style.fontWeight = '600';
+            button.style.display = 'flex';
+            button.style.alignItems = 'center';
+            button.style.justifyContent = 'center';
+            button.style.gap = '8px';
 
-            // Use the existing choice modal
-            document.getElementById('modal-overlay').classList.remove('hidden');
-            var modals = document.querySelectorAll('.modal');
-            for (var i = 0; i < modals.length; i++) { modals[i].classList.add('hidden'); }
-
-            var modal = document.getElementById('modal-choice');
-            if (!modal) return;
-
-            modal.classList.remove('hidden');
-            document.getElementById('choice-title').textContent = title;
-            document.getElementById('choice-text').textContent = message;
-
-            var buttonsContainer = document.getElementById('choice-buttons');
-            buttonsContainer.innerHTML = '';
-
-            buttons.forEach(function (btn) {
-                var button = document.createElement('button');
-                button.className = 'btn-primary';
-                button.style.padding = '16px';
-                button.style.fontSize = '1rem';
-                button.style.borderRadius = '12px';
-                button.style.background = 'var(--primary)';
-                button.style.color = 'white';
-                button.style.border = 'none';
-                button.style.cursor = 'pointer';
-                button.style.fontWeight = '600';
-                button.style.display = 'flex';
-                button.style.alignItems = 'center';
-                button.style.justifyContent = 'center';
-                button.style.gap = '8px';
-
-                if (btn.icon) {
-                    button.innerHTML = '<i class="' + btn.icon + '"></i> ' + btn.label;
-                } else {
-                    button.textContent = btn.label;
-                }
-
-                button.onclick = function () {
-                    btn.action();
-                    app.ui.closeModals();
-                };
-
-                buttonsContainer.appendChild(button);
-            });
-        },
-        toggleSidebar: function (open) {
-            document.getElementById('sidebar').classList.toggle('mobile-open', open);
-            document.getElementById('sidebar-overlay').classList.toggle('active', open);
-        },
-        toggleRepeatUI: function (val) {
-            var wrap = document.getElementById('repeat-freq-wrap');
-            var label = document.getElementById('repeat-duration-label');
-            if (val === 'none') {
-                if (wrap) wrap.style.display = 'none';
+            if (btn.icon) {
+                button.innerHTML = '<i class="' + btn.icon + '"></i> ' + btn.label;
             } else {
-                if (wrap) wrap.style.display = 'block';
-                if (label) label.textContent = 'Total ' + (val === 'weekly' ? 'weeks' : 'months') + ' (including this one):';
+                button.textContent = btn.label;
             }
-        },
-        showChoiceModal: function (title, text, choices) {
-            document.getElementById('choice-title').textContent = title;
-            document.getElementById('choice-text').textContent = text;
-            var container = document.getElementById('choice-buttons');
-            if (!container) return;
-            container.innerHTML = '';
-            choices.forEach(function (c) {
-                var btn = document.createElement('button');
-                btn.className = 'btn-primary';
-                btn.style.height = '48px';
-                btn.style.borderRadius = '12px';
-                btn.style.fontWeight = '700';
-                if (c.secondary) {
-                    btn.style.background = 'white';
-                    btn.style.color = 'var(--primary)';
-                    btn.style.border = '2px solid var(--primary)';
-                }
-                if (c.danger) {
-                    btn.style.background = '#ff4444';
-                    btn.style.border = 'none';
-                    btn.style.color = 'white';
-                }
-                btn.textContent = c.label;
-                btn.onclick = function () {
-                    c.action();
-                };
-                container.appendChild(btn);
-            });
-            this.openModal('choice');
+
+            button.onclick = function () {
+                btn.action();
+                app.ui.closeModals();
+            };
+
+            buttonsContainer.appendChild(button);
+        });
+    },
+    toggleSidebar: function (open) {
+        document.getElementById('sidebar').classList.toggle('mobile-open', open);
+        document.getElementById('sidebar-overlay').classList.toggle('active', open);
+    },
+    toggleRepeatUI: function (val) {
+        var wrap = document.getElementById('repeat-freq-wrap');
+        var label = document.getElementById('repeat-duration-label');
+        if (val === 'none') {
+            if (wrap) wrap.style.display = 'none';
+        } else {
+            if (wrap) wrap.style.display = 'block';
+            if (label) label.textContent = 'Total ' + (val === 'weekly' ? 'weeks' : 'months') + ' (including this one):';
         }
     },
-
-    setupSwipe: function () {
-        var self = this;
-        var startX = 0;
-        var startY = 0;
-
-        // Use document listeners to catch swipes even if target is small, 
-        // but restrict to calendar view
-        document.addEventListener('touchstart', function (e) {
-            if (app.state.view !== 'calendar') return;
-            startX = e.touches[0].clientX;
-            startY = e.touches[0].clientY;
-        }, { passive: true });
-
-        document.addEventListener('touchend', function (e) {
-            if (app.state.view !== 'calendar') return;
-            var diffX = e.changedTouches[0].clientX - startX;
-            var diffY = e.changedTouches[0].clientY - startY;
-
-            // horizontal swipe > 80px and horizontal more than vertical
-            if (Math.abs(diffX) > 80 && Math.abs(diffX) > Math.abs(diffY)) {
-                app.handlers.changeWeek(diffX > 0 ? -1 : 1);
+    showChoiceModal: function (title, text, choices) {
+        document.getElementById('choice-title').textContent = title;
+        document.getElementById('choice-text').textContent = text;
+        var container = document.getElementById('choice-buttons');
+        if (!container) return;
+        container.innerHTML = '';
+        choices.forEach(function (c) {
+            var btn = document.createElement('button');
+            btn.className = 'btn-primary';
+            btn.style.height = '48px';
+            btn.style.borderRadius = '12px';
+            btn.style.fontWeight = '700';
+            if (c.secondary) {
+                btn.style.background = 'white';
+                btn.style.color = 'var(--primary)';
+                btn.style.border = '2px solid var(--primary)';
             }
-        }, { passive: true });
-    },
+            if (c.danger) {
+                btn.style.background = '#ff4444';
+                btn.style.border = 'none';
+                btn.style.color = 'white';
+            }
+            btn.textContent = c.label;
+            btn.onclick = function () {
+                c.action();
+            };
+            container.appendChild(btn);
+        });
+        this.openModal('choice');
+    }
+},
 
-    setupEventListeners: function () {
-        document.getElementById('modal-overlay').onclick = function (e) {
-            if (e.target.id === 'modal-overlay') { app.ui.closeModals(); }
+setupSwipe: function () {
+    var self = this;
+    var startX = 0;
+    var startY = 0;
+
+    // Use document listeners to catch swipes even if target is small, 
+    // but restrict to calendar view
+    document.addEventListener('touchstart', function (e) {
+        if (app.state.view !== 'calendar') return;
+        startX = e.touches[0].clientX;
+        startY = e.touches[0].clientY;
+    }, { passive: true });
+
+    document.addEventListener('touchend', function (e) {
+        if (app.state.view !== 'calendar') return;
+        var diffX = e.changedTouches[0].clientX - startX;
+        var diffY = e.changedTouches[0].clientY - startY;
+
+        // horizontal swipe > 80px and horizontal more than vertical
+        if (Math.abs(diffX) > 80 && Math.abs(diffX) > Math.abs(diffY)) {
+            app.handlers.changeWeek(diffX > 0 ? -1 : 1);
+        }
+    }, { passive: true });
+},
+
+setupEventListeners: function () {
+    document.getElementById('modal-overlay').onclick = function (e) {
+        if (e.target.id === 'modal-overlay') { app.ui.closeModals(); }
+    };
+
+    const formMem = document.getElementById('form-member');
+    if (formMem) formMem.onsubmit = function (e) {
+        e.preventDefault(); var fd = new FormData(e.target);
+        var id = fd.get('id');
+        var name = fd.get('name');
+        var color = fd.get('color');
+        if (id) {
+            app.api.updateMember(id, { name, color });
+        } else {
+            app.api.createEmptyMember(name, color);
+        }
+        app.ui.closeModals(); e.target.reset();
+    };
+
+    const formStore = document.getElementById('form-store');
+    if (formStore) formStore.onsubmit = function (e) {
+        e.preventDefault(); var fd = new FormData(e.target);
+        var id = fd.get('id');
+        if (id) {
+            app.api.updateStore(id, { name: fd.get('name') });
+        } else {
+            app.api.createStore(fd.get('name'));
+        }
+        app.ui.closeModals(); e.target.reset();
+    };
+
+    const formAppt = document.getElementById('form-appointment');
+    if (formAppt) {
+        const rBtns = document.querySelectorAll('#repeat-freq-btns .group-btn');
+        rBtns.forEach(btn => {
+            btn.onclick = function () {
+                rBtns.forEach(b => b.classList.remove('active'));
+                this.classList.add('active');
+                const val = this.getAttribute('data-val');
+                if (val !== 'custom') formAppt.querySelector('[name=repeatFrequency]').value = val;
+                document.getElementById('repeat-frequency-input').style.display = (val === 'custom' ? 'block' : 'none');
+            };
+        });
+        document.getElementById('btn-delete-appt').onclick = () => {
+            const id = formAppt.querySelector('[name=id]').value;
+            if (id) app.handlers.deleteAppointment();
+            else app.ui.closeModals();
         };
-
-        const formMem = document.getElementById('form-member');
-        if (formMem) formMem.onsubmit = function (e) {
+        formAppt.onsubmit = function (e) {
             e.preventDefault(); var fd = new FormData(e.target);
             var id = fd.get('id');
-            var name = fd.get('name');
-            var color = fd.get('color');
-            if (id) {
-                app.api.updateMember(id, { name, color });
-            } else {
-                app.api.createEmptyMember(name, color);
-            }
+            var apptData = {
+                title: fd.get('title'),
+                date: fd.get('date'),
+                time: fd.get('time'),
+                memberId: fd.get('memberId'),
+                comment: fd.get('comment'),
+                repeatType: fd.get('repeatType'),
+                repeatFrequency: parseInt(fd.get('repeatFrequency')) || 1
+            };
+            if (id) app.api.updateAppointment(id, apptData);
+            else app.api.addAppointment(apptData);
             app.ui.closeModals(); e.target.reset();
         };
+    }
 
-        const formStore = document.getElementById('form-store');
-        if (formStore) formStore.onsubmit = function (e) {
-            e.preventDefault(); var fd = new FormData(e.target);
-            var id = fd.get('id');
-            if (id) {
-                app.api.updateStore(id, { name: fd.get('name') });
-            } else {
-                app.api.createStore(fd.get('name'));
-            }
+    const formHead = document.getElementById('form-heading');
+    if (formHead) formHead.onsubmit = function (e) {
+        e.preventDefault(); var fd = new FormData(e.target);
+        var name = fd.get('name');
+        if (name) {
+            app.api.addGroceryItem({ storeId: app.state.selectedStoreId, text: name, checked: false, isHeader: true });
             app.ui.closeModals(); e.target.reset();
-        };
+        }
+    };
 
-        const formAppt = document.getElementById('form-appointment');
-        if (formAppt) {
-            const rBtns = document.querySelectorAll('#repeat-freq-btns .group-btn');
-            rBtns.forEach(btn => {
-                btn.onclick = function () {
-                    rBtns.forEach(b => b.classList.remove('active'));
-                    this.classList.add('active');
-                    const val = this.getAttribute('data-val');
-                    if (val !== 'custom') formAppt.querySelector('[name=repeatFrequency]').value = val;
-                    document.getElementById('repeat-frequency-input').style.display = (val === 'custom' ? 'block' : 'none');
-                };
-            });
-            document.getElementById('btn-delete-appt').onclick = () => {
-                const id = formAppt.querySelector('[name=id]').value;
-                if (id) app.handlers.deleteAppointment();
-                else app.ui.closeModals();
-            };
-            formAppt.onsubmit = function (e) {
-                e.preventDefault(); var fd = new FormData(e.target);
-                var id = fd.get('id');
-                var apptData = {
-                    title: fd.get('title'),
-                    date: fd.get('date'),
-                    time: fd.get('time'),
-                    memberId: fd.get('memberId'),
-                    comment: fd.get('comment'),
-                    repeatType: fd.get('repeatType'),
-                    repeatFrequency: parseInt(fd.get('repeatFrequency')) || 1
-                };
-                if (id) app.api.updateAppointment(id, apptData);
-                else app.api.addAppointment(apptData);
-                app.ui.closeModals(); e.target.reset();
-            };
+    const formSet = document.getElementById('form-settings');
+    if (formSet) formSet.onsubmit = async function (e) {
+        e.preventDefault(); var fd = new FormData(e.target);
+        var startHour = parseInt(fd.get('startHour'));
+        var endHour = parseInt(fd.get('endHour'));
+
+        app.state.settings.startHour = startHour;
+        app.state.settings.endHour = endHour;
+
+        // Save settings to database
+        if (app.state.familyId) {
+            const { error } = await supabaseClient
+                .from('families')
+                .update({
+                    start_hour: startHour,
+                    end_hour: endHour
+                })
+                .eq('id', app.state.familyId);
+
+            if (error) {
+                console.error('Failed to save settings:', error);
+                alert('Failed to save settings. Check console.');
+            } else {
+                console.log('✅ Settings saved successfully');
+            }
         }
 
-        const formHead = document.getElementById('form-heading');
-        if (formHead) formHead.onsubmit = function (e) {
-            e.preventDefault(); var fd = new FormData(e.target);
-            var name = fd.get('name');
-            if (name) {
-                app.api.addGroceryItem({ storeId: app.state.selectedStoreId, text: name, checked: false, isHeader: true });
-                app.ui.closeModals(); e.target.reset();
-            }
-        };
+        app.ui.closeModals(); app.render();
+    };
 
-        const formSet = document.getElementById('form-settings');
-        if (formSet) formSet.onsubmit = async function (e) {
-            e.preventDefault(); var fd = new FormData(e.target);
-            var startHour = parseInt(fd.get('startHour'));
-            var endHour = parseInt(fd.get('endHour'));
+    const formCreateFamily = document.getElementById('form-create-family');
+    if (formCreateFamily) formCreateFamily.onsubmit = async function (e) {
+        e.preventDefault();
+        var fd = new FormData(e.target);
+        var familyName = fd.get('familyName');
+        var memberName = fd.get('memberName');
+        var color = fd.get('color');
 
-            app.state.settings.startHour = startHour;
-            app.state.settings.endHour = endHour;
+        await app.api.createFamilyAndMember(familyName, memberName, color);
+        app.ui.closeModals();
+        e.target.reset();
+    };
 
-            // Save settings to database
-            if (app.state.familyId) {
-                const { error } = await supabaseClient
-                    .from('families')
-                    .update({
-                        start_hour: startHour,
-                        end_hour: endHour
-                    })
-                    .eq('id', app.state.familyId);
+    const formJoinFamily = document.getElementById('form-join-family');
+    if (formJoinFamily) formJoinFamily.onsubmit = async function (e) {
+        e.preventDefault();
+        var fd = new FormData(e.target);
+        var inviteCode = fd.get('inviteCode').toUpperCase();
+        var memberName = fd.get('memberName');
+        var color = fd.get('color');
 
-                if (error) {
-                    console.error('Failed to save settings:', error);
-                    alert('Failed to save settings. Check console.');
-                } else {
-                    console.log('✅ Settings saved successfully');
-                }
-            }
+        await app.api.joinFamilyWithCode(inviteCode, memberName, color);
+        app.ui.closeModals();
+        e.target.reset();
+    };
 
-            app.ui.closeModals(); app.render();
-        };
+    var formEditItem = document.getElementById('form-edit-item');
+    if (formEditItem) formEditItem.onsubmit = function (e) {
+        e.preventDefault();
+        var fd = new FormData(e.target);
+        var newText = fd.get('text');
 
-        const formCreateFamily = document.getElementById('form-create-family');
-        if (formCreateFamily) formCreateFamily.onsubmit = async function (e) {
-            e.preventDefault();
-            var fd = new FormData(e.target);
-            var familyName = fd.get('familyName');
-            var memberName = fd.get('memberName');
-            var color = fd.get('color');
+        if (newText && newText.trim() && app.state.editingItemId) {
+            app.api.updateGroceryItem(app.state.editingItemId, { text: newText.trim() });
+        }
 
-            await app.api.createFamilyAndMember(familyName, memberName, color);
-            app.ui.closeModals();
-            e.target.reset();
-        };
-
-        const formJoinFamily = document.getElementById('form-join-family');
-        if (formJoinFamily) formJoinFamily.onsubmit = async function (e) {
-            e.preventDefault();
-            var fd = new FormData(e.target);
-            var inviteCode = fd.get('inviteCode').toUpperCase();
-            var memberName = fd.get('memberName');
-            var color = fd.get('color');
-
-            await app.api.joinFamilyWithCode(inviteCode, memberName, color);
-            app.ui.closeModals();
-            e.target.reset();
-        };
-
-        var formEditItem = document.getElementById('form-edit-item');
-        if (formEditItem) formEditItem.onsubmit = function (e) {
-            e.preventDefault();
-            var fd = new FormData(e.target);
-            var newText = fd.get('text');
-
-            if (newText && newText.trim() && app.state.editingItemId) {
-                app.api.updateGroceryItem(app.state.editingItemId, { text: newText.trim() });
-            }
-
-            app.state.editingItemId = null;
-            app.ui.closeModals();
-            e.target.reset();
-        };
-    },
+        app.state.editingItemId = null;
+        app.ui.closeModals();
+        e.target.reset();
+    };
+},
 };
 
 app.init();

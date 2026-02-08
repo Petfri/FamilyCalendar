@@ -37,18 +37,20 @@
         <div class="content-wrapper">
             <header class="header">
                 <div id="header-left" style="display:flex; align-items:center; gap:8px;">
-                    <button id="menu-toggle" class="icon-btn" onclick="app.ui.toggleSidebar(true)">
+                    <button id="menu-toggle" class="icon-btn-dark" onclick="app.ui.toggleSidebar(true)">
                         <i class="fa-solid fa-bars"></i>
                     </button>
                     <button class="icon-btn-dark" onclick="app.handlers.onSettings()" title="Calendar Settings">
                         <i class="fa-solid fa-gear"></i>
                     </button>
+
+
                     <button class="icon-btn-dark" onclick="app.auth.logout()" title="Logout">
                         <i class="fa-solid fa-right-from-bracket"></i>
                     </button>
                 </div>
 
-                <nav class="main-nav">
+                <nav class="main-nav" style="margin-left: auto; margin-right: auto;">
                     <button id="nav-calendar" class="nav-btn active" onclick="app.switchView('calendar')">
                         <i class="fa-solid fa-calendar-days"></i> Calendar
                     </button>
@@ -57,12 +59,8 @@
                     </button>
                 </nav>
 
-                <div class="header-right" style="display:flex; gap:8px; align-items:center; margin-left: auto;">
-                    <button class="icon-btn-ghost" onclick="app.handlers.onSettings()" title="Settings"><i
-                            class="fa-solid fa-gear"></i></button>
-                    <button class="icon-btn-primary" onclick="app.handlers.onAddNewItem()" title="Add New">
-                        <i class="fa-solid fa-plus"></i>
-                    </button>
+                <div class="header-right" style="display:flex; gap:8px; align-items:center;">
+                    <!-- Right side empty for balance or specific action if needed later -->
                 </div>
             </header>
             <main class="main-view" id="main-view">
@@ -313,6 +311,31 @@
                 </div>
             </form>
         </div>
+        <div id="modal-whats-new" class="modal hidden">
+            <h3>What's New (Alpha 0.2)</h3>
+            <div style="margin-bottom: 20px; line-height: 1.5; font-size: 0.9rem; color: #444;">
+                <ul style="padding-left: 20px; margin-bottom: 15px;">
+                    <li style="margin-bottom: 5px;"><strong>Refined Header:</strong> Navigation tabs are now integrated
+                        into the header for a cleaner look.</li>
+                    <li style="margin-bottom: 5px;"><strong>Better Drag & Drop:</strong> Smoother experience on mobile
+                        with improved visual feedback.</li>
+                    <li style="margin-bottom: 5px;"><strong>Calendar Updates:</strong> Appointments now use a red dot 🔴
+                        for notes.</li>
+                    <li style="margin-bottom: 5px;"><strong>Mobile Fixes:</strong> Improved touch sensitivity and layout
+                        adjustments.</li>
+                </ul>
+                <p>Enjoy the updates!</p>
+            </div>
+            <div class="form-actions" style="display:flex; align-items:center; gap:12px; flex-direction: column;">
+                <button type="button" class="btn-primary" onclick="app.ui.closeWhatsNew(false)" style="width:100%">
+                    OK, Got it!
+                </button>
+                <button type="button" class="btn-text" onclick="app.ui.closeWhatsNew(true)"
+                    style="font-size: 0.8rem; color: #888;">
+                    Don't show this again
+                </button>
+            </div>
+        </div>
         <div id="modal-edit-item" class="modal hidden">
             <h3 id="edit-item-title">Edit Item</h3>
             <form id="form-edit-item">
@@ -331,7 +354,7 @@
                         <i class="fa-solid fa-check"></i> Delete Cleared Items
                     </button>
                 </div>
-                <div class="form-actions" style="margin-top: 16px;">
+                <div class="form-actions" style="display:flex; align-items:center; gap:12px;">
                     <button type="button" class="icon-btn-ghost" onclick="app.ui.closeModals()"><i
                             class="fa-solid fa-xmark"></i></button>
                     <button type="submit" class="icon-btn-primary"><i class="fa-solid fa-check"></i></button>

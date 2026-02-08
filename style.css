@@ -96,12 +96,16 @@ body {
 
 .sidebar-item {
     padding: 10px 12px;
-    border-radius: 10px;
+    border-radius: 6px;
     margin-bottom: 6px;
     transition: var(--transition);
     display: flex;
     align-items: center;
     gap: 12px;
+    user-select: none;
+    -webkit-user-select: none;
+    touch-action: none;
+    position: relative;
 }
 
 .sidebar-item:hover {
@@ -261,7 +265,9 @@ body {
 
 .grid-cell.drag-over {
     background: rgba(33, 150, 243, 0.1) !important;
-    border: 2px dashed var(--primary);
+    outline: 2px dashed var(--primary);
+    outline-offset: -2px;
+    /* Pull inside */
 }
 
 .grid-cell.weekend {
@@ -328,7 +334,7 @@ body {
 .appointment-card {
     border-radius: 6px;
     padding: 2px 4px;
-    font-size: 0.7rem;
+    /* font-size: 0.7rem; */
     margin-bottom: 2px;
     cursor: pointer;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
@@ -337,8 +343,13 @@ body {
     text-overflow: ellipsis;
     line-height: 1.2;
     display: flex;
-    justify-content: space-between;
+    justify-content: flex-start;
     align-items: center;
+    gap: 4px;
+    position: relative;
+    user-select: none;
+    -webkit-user-select: none;
+    touch-action: none;
 }
 
 /* SHOPPING */
@@ -358,11 +369,13 @@ body {
     align-items: center;
     padding: 6px 12px;
     background: white !important;
-    border-radius: 8px;
+    border-radius: 6px;
     margin-bottom: 4px;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.02);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
     user-select: none;
-    touch-action: manipulation;
+    -webkit-user-select: none;
+    touch-action: none;
+    position: relative;
 }
 
 .drag-handle {
@@ -377,10 +390,23 @@ body {
     cursor: -webkit-grabbing !important;
 }
 
+/* Standardized Drag/Ghost Styles */
+.drag-ready,
 .sortable-ghost {
-    opacity: 0.4;
+    outline: 2px dashed var(--primary) !important;
+    outline-offset: -2px !important;
+    background: rgba(0, 44, 58, 0.05) !important;
+    cursor: grabbing !important;
+    opacity: 1 !important;
+    border: none !important;
+    /* Remove borders to keep outline crisp */
+    box-shadow: none !important;
+    color: inherit !important;
+}
+
+.sortable-ghost {
     background: #e1f5fe !important;
-    border: 2px dashed var(--primary);
+    color: var(--primary) !important;
 }
 
 .check-circle {
@@ -834,11 +860,8 @@ body {
 
 @media (max-width: 768px) {
     #menu-toggle {
-        display: block;
-        background: none;
-        border: none;
-        font-size: 1.4rem;
-        color: var(--primary);
+        display: flex;
+        /* Ensure it stays flex for alignment */
     }
 }
 
@@ -985,4 +1008,25 @@ body {
     .month-short {
         display: inline;
     }
+}
+
+/* Sidebar specific drag-ready AND ghost (for dark background) */
+.sidebar-item.drag-ready,
+.sidebar-list .sortable-ghost {
+    outline-color: rgba(255, 255, 255, 0.6) !important;
+    background: rgba(255, 255, 255, 0.1) !important;
+    color: white !important;
+}
+
+.sidebar-item.drag-ready,
+.shopping-item.drag-ready,
+.sidebar-list .sortable-ghost,
+.shopping-list .sortable-ghost {
+    box-shadow: none !important;
+}
+
+/* Ensure generic ghost matches generic drag-ready (Lists) */
+.shopping-list .sortable-ghost {
+    background: rgba(0, 44, 58, 0.05) !important;
+    color: var(--primary) !important;
 }
