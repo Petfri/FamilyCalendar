@@ -1,9 +1,9 @@
-const CACHE_NAME = 'family-sync-v2';
+const CACHE_NAME = 'family-sync-alpha-0.2.2';
 const ASSETS = [
     './',
     './index.html',
-    './style.css',
-    './app.js'
+    './style.css?v=alpha0.2.2',
+    './app.js?v=alpha0.2.2'
 ];
 
 // Install Event
