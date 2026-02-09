@@ -2188,7 +2188,7 @@ var app = {
             }
         },
         closeModals: function (skipPop) {
-            if (!app.state.currentUser) return;
+            // Removed currentUser check to allow closing generic modals (like What's New) even if not logged in
             document.getElementById('modal-overlay').classList.add('hidden');
             if (!skipPop) history.back();
         },
