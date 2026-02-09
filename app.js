@@ -602,8 +602,10 @@ var app = {
 
     util: {
         longPress: function (el, callback) {
-            var startX = 0;
-            var startY = 0;
+            let startX = 0;
+            let startY = 0;
+            let isPressed = false;
+            let timer = null;
 
             function onDown(e) {
                 if (e.button !== undefined && e.button !== 0) return;
@@ -615,17 +617,18 @@ var app = {
                 timer = setTimeout(function () {
                     if (isPressed) {
                         el.classList.add('drag-ready');
-                        if (navigator.vibrate) navigator.vibrate(20);
+                        if (navigator.vibrate) navigator.vibrate(30);
                         if (callback) callback();
                     }
-                }, 300);
+                }, 600); // Increased delay to 600ms to prevent accidental grabs
             }
 
             function onMove(e) {
                 if (!isPressed) return;
-                var moveX = Math.abs(e.clientX - startX);
-                var moveY = Math.abs(e.clientY - startY);
-                if (moveX > 20 || moveY > 20) {
+                // If moved too much before timer fires, cancel it
+                let moveX = Math.abs(e.clientX - startX);
+                let moveY = Math.abs(e.clientY - startY);
+                if (moveX > 10 || moveY > 10) { // low tolerance to ensure scrolling cancels the hold
                     isPressed = false;
                     clearTimeout(timer);
                     el.classList.remove('drag-ready');
@@ -635,6 +638,7 @@ var app = {
             function onUp() {
                 isPressed = false;
                 clearTimeout(timer);
+                // Delay removing class slightly so click handlers don't fire if it was a drag
                 setTimeout(() => el.classList.remove('drag-ready'), 100);
             }
 
